@@ -50,6 +50,15 @@ function validateBranchName(name: unknown, label: string): void {
   if (name.startsWith('-')) throw new Error(`${label} must not start with "-"`);
 }
 
+function validatePort(port: unknown, label: string): void {
+  if (typeof port !== 'number' || !Number.isInteger(port)) {
+    throw new Error(`${label} must be an integer`);
+  }
+  if (port < 1 || port > 65535) {
+    throw new Error(`${label} must be between 1 and 65535`);
+  }
+}
+
 export function registerAllHandlers(win: BrowserWindow): void {
   // --- Remote access state ---
   let remoteServer: ReturnType<typeof startRemoteServer> | null = null;
@@ -210,13 +219,16 @@ export function registerAllHandlers(win: BrowserWindow): void {
   });
 
   // --- Remote access ---
-  ipcMain.handle(IPC.StartRemoteServer, (_e, args: { port?: number }) => {
+  ipcMain.handle(IPC.StartRemoteServer, (_e, args: { port?: number; allowExternal?: boolean } = {}) => {
     if (remoteServer) return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, port: remoteServer.port };
+    const port = args.port ?? 7777;
+    validatePort(port, 'port');
 
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
     const distRemote = path.join(thisDir, "..", "..", "dist-remote");
     remoteServer = startRemoteServer({
-      port: args.port ?? 7777,
+      port,
+      allowExternal: args.allowExternal === true,
       staticDir: distRemote,
       getTaskName: (taskId: string) => taskNames.get(taskId) ?? taskId,
       getAgentStatus: (agentId: string) => {

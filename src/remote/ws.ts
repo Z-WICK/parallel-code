@@ -30,12 +30,14 @@ export function connect(): void {
   if (!token) return;
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${protocol}//${window.location.host}/ws?token=${token}`;
+  const url = `${protocol}//${window.location.host}/ws`;
+  const wsProtocol = `pc-token.${token}`;
 
   setStatus("connecting");
-  ws = new WebSocket(url);
+  ws = new WebSocket(url, wsProtocol);
 
   ws.onopen = () => {
+    send({ type: "auth", token });
     setStatus("connected");
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);

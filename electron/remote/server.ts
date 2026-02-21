@@ -93,6 +93,7 @@ function buildAgentList(
 
 export function startRemoteServer(opts: {
   port: number;
+  allowExternal: boolean;
   staticDir: string;
   getTaskName: (taskId: string) => string;
   getAgentStatus: (agentId: string) => { status: "running" | "exited"; exitCode: number | null; lastLine: string };
@@ -109,11 +110,34 @@ export function startRemoteServer(opts: {
     return timingSafeEqual(buf, tokenBuf);
   }
 
-  function checkAuth(req: IncomingMessage): boolean {
+  function checkAuthHeader(req: IncomingMessage): boolean {
     const auth = req.headers.authorization;
-    if (auth?.startsWith("Bearer ") && safeCompare(auth.slice(7))) return true;
+    return auth?.startsWith("Bearer ") ? safeCompare(auth.slice(7)) : false;
+  }
+
+  function getWsProtocolToken(req: IncomingMessage): string | null {
+    const raw = req.headers["sec-websocket-protocol"];
+    if (!raw) return null;
+    const value = Array.isArray(raw) ? raw.join(",") : raw;
+    const protocols = value
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    for (const protocol of protocols) {
+      if (protocol.startsWith("pc-token.")) {
+        return protocol.slice("pc-token.".length);
+      }
+    }
+    return null;
+  }
+
+  function getWsHandshakeToken(req: IncomingMessage): string | null {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith("Bearer ")) return auth.slice(7);
+    const protocolToken = getWsProtocolToken(req);
+    if (protocolToken) return protocolToken;
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    return safeCompare(url.searchParams.get("token"));
+    return url.searchParams.get("token");
   }
 
   const SECURITY_HEADERS: Record<string, string> = {
@@ -127,7 +151,7 @@ export function startRemoteServer(opts: {
 
     // --- API routes (require auth) ---
     if (url.pathname.startsWith("/api/")) {
-      if (!checkAuth(req)) {
+      if (!checkAuthHeader(req)) {
         res.writeHead(401, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "unauthorized" }));
         return;
@@ -200,11 +224,16 @@ export function startRemoteServer(opts: {
     server,
     maxPayload: 64 * 1024,
     verifyClient: (info, cb) => {
+      const reqUrl = new URL(info.req.url ?? "/", `http://${info.req.headers.host ?? "localhost"}`);
+      if (reqUrl.pathname !== "/ws") {
+        cb(false, 404, "Not found");
+        return;
+      }
       if (wss.clients.size >= 10) {
         cb(false, 429, "Too many connections");
         return;
       }
-      if (!checkAuth(info.req)) {
+      if (!safeCompare(getWsHandshakeToken(info.req))) {
         cb(false, 401, "Unauthorized");
         return;
       }
@@ -246,17 +275,44 @@ export function startRemoteServer(opts: {
     }, 100);
   });
 
-  wss.on("connection", (ws) => {
-    const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
-    ws.send(JSON.stringify({ type: "agents", list } satisfies ServerMessage));
+  wss.on("connection", (ws, req) => {
+    let authed = safeCompare(getWsHandshakeToken(req));
+    const authTimeout = setTimeout(() => {
+      if (!authed && ws.readyState === WebSocket.OPEN) {
+        ws.close(4001, "Auth timeout");
+      }
+    }, 10_000);
+
+    function sendAgentList(): void {
+      const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
+      ws.send(JSON.stringify({ type: "agents", list } satisfies ServerMessage));
+    }
+
+    if (authed) {
+      clearTimeout(authTimeout);
+      sendAgentList();
+    }
 
     clientSubs.set(ws, new Map());
 
     ws.on("message", (raw) => {
       const msg = parseClientMessage(String(raw));
       if (!msg) return;
+      if (!authed) {
+        if (msg.type !== "auth" || !safeCompare(msg.token)) {
+          ws.close(4001, "Unauthorized");
+          return;
+        }
+        authed = true;
+        clearTimeout(authTimeout);
+        sendAgentList();
+        return;
+      }
 
       switch (msg.type) {
+        case "auth":
+          // Ignore duplicate auth frames after a client is authenticated.
+          break;
         case "input":
           try { writeToAgent(msg.agentId, msg.data); } catch { /* agent gone */ }
           break;
@@ -302,6 +358,7 @@ export function startRemoteServer(opts: {
     });
 
     ws.on("close", () => {
+      clearTimeout(authTimeout);
       const subs = clientSubs.get(ws);
       if (subs) {
         for (const [agentId, cb] of subs) {
@@ -314,17 +371,19 @@ export function startRemoteServer(opts: {
   server.on("error", (err) => {
     console.error("[remote] Server error:", err.message);
   });
-  server.listen(opts.port, "0.0.0.0");
+  const bindHost = opts.allowExternal ? "0.0.0.0" : "127.0.0.1";
+  server.listen(opts.port, bindHost);
 
-  const primaryIp = ips.wifi ?? ips.tailscale ?? "127.0.0.1";
-  const url = `http://${primaryIp}:${opts.port}?token=${token}`;
-  const wifiUrl = ips.wifi ? `http://${ips.wifi}:${opts.port}?token=${token}` : null;
-  const tailscaleUrl = ips.tailscale ? `http://${ips.tailscale}:${opts.port}?token=${token}` : null;
+  const localUrl = `http://127.0.0.1:${opts.port}/#token=${token}`;
+  const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? "127.0.0.1") : "127.0.0.1";
+  const url = `http://${primaryIp}:${opts.port}/#token=${token}`;
+  const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/#token=${token}` : null;
+  const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/#token=${token}` : null;
 
   return {
     token,
     port: opts.port,
-    url,
+    url: opts.allowExternal ? url : localUrl,
     wifiUrl,
     tailscaleUrl,
     connectedClients: () => wss.clients.size,

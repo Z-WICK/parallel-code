@@ -36,6 +36,15 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
 
   createFocusRestore(() => props.open);
 
+  async function closeAndStop(): Promise<void> {
+    stopPolling?.();
+    if (store.remoteAccess.enabled) {
+      await stopRemoteAccess();
+    }
+    setQrDataUrl(null);
+    props.onClose();
+  }
+
   async function generateQr(url: string) {
     try {
       const QRCode = await import("qrcode");
@@ -66,7 +75,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
     requestAnimationFrame(() => dialogRef?.focus());
 
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") props.onClose();
+      if (e.key === "Escape") void closeAndStop();
     };
     document.addEventListener("keydown", handler);
     onCleanup(() => document.removeEventListener("keydown", handler));
@@ -74,7 +83,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
     if (!store.remoteAccess.enabled && !untrack(starting)) {
       setStarting(true);
       setError(null);
-      startRemoteAccess().then((result) => {
+      startRemoteAccess({ allowExternal: true }).then((result) => {
         setStarting(false);
         // Default to wifi if available, otherwise tailscale
         setMode(result.wifiUrl ? "wifi" : "tailscale");
@@ -103,10 +112,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
   });
 
   async function handleDisconnect() {
-    stopPolling?.();
-    await stopRemoteAccess();
-    setQrDataUrl(null);
-    props.onClose();
+    await closeAndStop();
   }
 
   async function handleCopyUrl() {
@@ -143,7 +149,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
             background: "rgba(0,0,0,0.55)",
             "z-index": "1000",
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) void closeAndStop(); }}
         >
           <div
             ref={dialogRef}
@@ -242,6 +248,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                 }>
                   <> Your phone and this computer must be on the same Tailscale network.</>
                 </Show>
+                {" "}Closing this dialog will disconnect remote access.
               </p>
 
               {/* Connected clients */}

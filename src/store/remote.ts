@@ -10,14 +10,22 @@ interface ServerResult {
   port: number;
 }
 
+interface StartRemoteAccessOptions {
+  port?: number;
+  allowExternal?: boolean;
+}
+
 // Generation counter — incremented on stop so in-flight poll responses
 // that arrive after stop are discarded instead of overwriting the store.
 let stopGeneration = 0;
 
-export async function startRemoteAccess(port?: number): Promise<ServerResult> {
+export async function startRemoteAccess(options: StartRemoteAccessOptions = {}): Promise<ServerResult> {
   const result = await invoke<ServerResult>(
     IPC.StartRemoteServer,
-    port ? { port } : {}
+    {
+      ...(options.port ? { port: options.port } : {}),
+      ...(options.allowExternal !== undefined ? { allowExternal: options.allowExternal } : {}),
+    }
   );
   setStore("remoteAccess", {
     enabled: true,
