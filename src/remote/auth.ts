@@ -29,6 +29,11 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+/** Replace token in localStorage (used for seamless token rotation). */
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
 /** Clear stored token. */
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);

@@ -35,11 +35,21 @@ export interface ScrollbackMessage {
   cols: number;
 }
 
+export interface TokenMessage {
+  type: "token";
+  token: string;
+  tokenExpiresAt: number;
+  url: string;
+  wifiUrl: string | null;
+  tailscaleUrl: string | null;
+}
+
 export type ServerMessage =
   | OutputMessage
   | StatusMessage
   | AgentsMessage
-  | ScrollbackMessage;
+  | ScrollbackMessage
+  | TokenMessage;
 
 // --- Client -> Server messages ---
 

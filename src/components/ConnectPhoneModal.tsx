@@ -248,7 +248,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                 }>
                   <> Your phone and this computer must be on the same Tailscale network.</>
                 </Show>
-                {" "}Access token auto-rotates every 10 minutes. Closing this dialog will disconnect remote access.
+                {" "}Access token auto-rotates every 10 minutes without dropping connected sessions. Closing this dialog will disconnect remote access.
               </p>
 
               {/* Connected clients */}

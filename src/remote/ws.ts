@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { getToken, clearToken } from "./auth";
+import { getToken, setToken, clearToken } from "./auth";
 import type { ServerMessage, RemoteAgent } from "../../electron/remote/protocol";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
@@ -78,6 +78,12 @@ export function connect(): void {
               : a
           )
         );
+        break;
+
+      case "token":
+        // Server rotates tokens in the background; persist immediately so
+        // reconnects and authenticated API calls stay seamless.
+        setToken(msg.token);
         break;
     }
   };

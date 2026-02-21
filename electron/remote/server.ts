@@ -36,6 +36,7 @@ const MIME: Record<string, string> = {
 
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const TOKEN_EXPIRY_CHECK_MS = 5 * 1000;
+const TOKEN_GRACE_MS = 60 * 1000;
 
 interface RemoteServer {
   stop: () => Promise<void>;
@@ -103,26 +104,48 @@ export function startRemoteServer(opts: {
   getAgentStatus: (agentId: string) => { status: "running" | "exited"; exitCode: number | null; lastLine: string };
 }): RemoteServer {
   const ips = getNetworkIps();
-  const authState: { token: string; tokenBuf: Buffer; expiresAt: number } = {
-    token: "",
-    tokenBuf: Buffer.alloc(0),
-    expiresAt: 0,
+  const authState: {
+    current: { token: string; tokenBuf: Buffer; expiresAt: number };
+    previous: { tokenBuf: Buffer; graceUntil: number } | null;
+  } = {
+    current: {
+      token: "",
+      tokenBuf: Buffer.alloc(0),
+      expiresAt: 0,
+    },
+    previous: null,
   };
 
-  function issueToken(): void {
-    const nextToken = randomBytes(24).toString("base64url");
-    authState.token = nextToken;
-    authState.tokenBuf = Buffer.from(nextToken);
-    authState.expiresAt = Date.now() + TOKEN_TTL_MS;
+  function issueToken(): { token: string; tokenBuf: Buffer; expiresAt: number } {
+    const token = randomBytes(24).toString("base64url");
+    return {
+      token,
+      tokenBuf: Buffer.from(token),
+      expiresAt: Date.now() + TOKEN_TTL_MS,
+    };
   }
-  issueToken();
+  authState.current = issueToken();
 
   function safeCompare(candidate: string | null | undefined): boolean {
     if (!candidate) return false;
-    if (Date.now() > authState.expiresAt) return false;
+    const now = Date.now();
     const buf = Buffer.from(candidate);
-    if (buf.length !== authState.tokenBuf.length) return false;
-    return timingSafeEqual(buf, authState.tokenBuf);
+    if (
+      now <= authState.current.expiresAt &&
+      buf.length === authState.current.tokenBuf.length &&
+      timingSafeEqual(buf, authState.current.tokenBuf)
+    ) {
+      return true;
+    }
+    if (
+      authState.previous &&
+      now <= authState.previous.graceUntil &&
+      buf.length === authState.previous.tokenBuf.length &&
+      timingSafeEqual(buf, authState.previous.tokenBuf)
+    ) {
+      return true;
+    }
+    return false;
   }
 
   function checkAuthHeader(req: IncomingMessage): boolean {
@@ -162,11 +185,11 @@ export function startRemoteServer(opts: {
   };
 
   function currentUrls(): { url: string; wifiUrl: string | null; tailscaleUrl: string | null } {
-    const localUrl = `http://127.0.0.1:${opts.port}/#token=${authState.token}`;
+    const localUrl = `http://127.0.0.1:${opts.port}/#token=${authState.current.token}`;
     const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? "127.0.0.1") : "127.0.0.1";
-    const url = `http://${primaryIp}:${opts.port}/#token=${authState.token}`;
-    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/#token=${authState.token}` : null;
-    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/#token=${authState.token}` : null;
+    const url = `http://${primaryIp}:${opts.port}/#token=${authState.current.token}`;
+    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/#token=${authState.current.token}` : null;
+    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/#token=${authState.current.token}` : null;
     return { url: opts.allowExternal ? url : localUrl, wifiUrl, tailscaleUrl };
   }
 
@@ -265,18 +288,40 @@ export function startRemoteServer(opts: {
     },
   });
 
-  function rotateToken(reason: string): void {
-    issueToken();
-    for (const client of wss.clients) {
+  const authedClients = new Set<WebSocket>();
+
+  function rotateToken(): void {
+    const oldTokenBuf = authState.current.tokenBuf;
+    authState.current = issueToken();
+    authState.previous = {
+      tokenBuf: oldTokenBuf,
+      graceUntil: Date.now() + TOKEN_GRACE_MS,
+    };
+
+    const urls = currentUrls();
+    const tokenMessage = JSON.stringify({
+      type: "token",
+      token: authState.current.token,
+      tokenExpiresAt: authState.current.expiresAt,
+      url: urls.url,
+      wifiUrl: urls.wifiUrl,
+      tailscaleUrl: urls.tailscaleUrl,
+    } satisfies ServerMessage);
+
+    for (const client of authedClients) {
       if (client.readyState === WebSocket.OPEN) {
-        client.close(4001, reason);
+        client.send(tokenMessage);
       }
     }
   }
 
   const tokenExpiryTimer = setInterval(() => {
-    if (Date.now() > authState.expiresAt) {
-      rotateToken("Token expired");
+    const now = Date.now();
+    if (now > authState.current.expiresAt) {
+      rotateToken();
+    }
+    if (authState.previous && now > authState.previous.graceUntil) {
+      authState.previous = null;
     }
   }, TOKEN_EXPIRY_CHECK_MS);
 
@@ -328,6 +373,7 @@ export function startRemoteServer(opts: {
     }
 
     if (authed) {
+      authedClients.add(ws);
       clearTimeout(authTimeout);
       sendAgentList();
     }
@@ -343,6 +389,7 @@ export function startRemoteServer(opts: {
           return;
         }
         authed = true;
+        authedClients.add(ws);
         clearTimeout(authTimeout);
         sendAgentList();
         return;
@@ -397,6 +444,7 @@ export function startRemoteServer(opts: {
     });
 
     ws.on("close", () => {
+      authedClients.delete(ws);
       clearTimeout(authTimeout);
       const subs = clientSubs.get(ws);
       if (subs) {
@@ -414,8 +462,8 @@ export function startRemoteServer(opts: {
   server.listen(opts.port, bindHost);
 
   return {
-    get token() { return authState.token; },
-    get tokenExpiresAt() { return authState.expiresAt; },
+    get token() { return authState.current.token; },
+    get tokenExpiresAt() { return authState.current.expiresAt; },
     port: opts.port,
     get url() { return currentUrls().url; },
     get wifiUrl() { return currentUrls().wifiUrl; },
@@ -427,6 +475,7 @@ export function startRemoteServer(opts: {
       unsubListChanged();
       clearInterval(tokenExpiryTimer);
       for (const client of wss.clients) client.close();
+      authedClients.clear();
       wss.close();
       server.close(() => resolve());
     }),
