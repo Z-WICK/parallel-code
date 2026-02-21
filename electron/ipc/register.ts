@@ -220,7 +220,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
 
   // --- Remote access ---
   ipcMain.handle(IPC.StartRemoteServer, (_e, args: { port?: number; allowExternal?: boolean } = {}) => {
-    if (remoteServer) return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, port: remoteServer.port };
+    if (remoteServer) return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, tokenExpiresAt: remoteServer.tokenExpiresAt, port: remoteServer.port };
     const port = args.port ?? 7777;
     validatePort(port, 'port');
 
@@ -240,7 +240,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
         };
       },
     });
-    return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, port: remoteServer.port };
+    return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, tokenExpiresAt: remoteServer.tokenExpiresAt, port: remoteServer.port };
   });
 
   ipcMain.handle(IPC.StopRemoteServer, async () => {
@@ -252,7 +252,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
 
   ipcMain.handle(IPC.GetRemoteStatus, () => {
     if (!remoteServer) return { enabled: false, connectedClients: 0 };
-    return { enabled: true, connectedClients: remoteServer.connectedClients(), url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, port: remoteServer.port };
+    return { enabled: true, connectedClients: remoteServer.connectedClients(), url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, tokenExpiresAt: remoteServer.tokenExpiresAt, port: remoteServer.port };
   });
 
   // --- Forward window events to renderer ---

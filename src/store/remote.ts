@@ -7,6 +7,7 @@ interface ServerResult {
   wifiUrl: string | null;
   tailscaleUrl: string | null;
   token: string;
+  tokenExpiresAt: number;
   port: number;
 }
 
@@ -30,6 +31,7 @@ export async function startRemoteAccess(options: StartRemoteAccessOptions = {}):
   setStore("remoteAccess", {
     enabled: true,
     token: result.token,
+    tokenExpiresAt: result.tokenExpiresAt,
     port: result.port,
     url: result.url,
     wifiUrl: result.wifiUrl,
@@ -45,6 +47,7 @@ export async function stopRemoteAccess(): Promise<void> {
   setStore("remoteAccess", {
     enabled: false,
     token: null,
+    tokenExpiresAt: null,
     port: 7777,
     url: null,
     wifiUrl: null,
@@ -62,6 +65,7 @@ export async function refreshRemoteStatus(): Promise<void> {
     wifiUrl?: string;
     tailscaleUrl?: string;
     token?: string;
+    tokenExpiresAt?: number;
     port?: number;
   }>(IPC.GetRemoteStatus);
 
@@ -76,10 +80,12 @@ export async function refreshRemoteStatus(): Promise<void> {
       wifiUrl: result.wifiUrl ?? null,
       tailscaleUrl: result.tailscaleUrl ?? null,
       token: result.token ?? null,
+      tokenExpiresAt: result.tokenExpiresAt ?? null,
       port: result.port ?? 7777,
     });
   } else {
     setStore("remoteAccess", "enabled", false);
+    setStore("remoteAccess", "tokenExpiresAt", null);
     setStore("remoteAccess", "connectedClients", 0);
   }
 }

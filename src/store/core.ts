@@ -43,6 +43,7 @@ export const [store, setStore] = createStore<AppStore>({
   remoteAccess: {
     enabled: false,
     token: null,
+    tokenExpiresAt: null,
     port: 7777,
     url: null,
     wifiUrl: null,
