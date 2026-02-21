@@ -611,11 +611,11 @@ export function Sidebar() {
 
         {/* Connect / Disconnect Phone button */}
         {(() => {
-          const connected = () => store.remoteAccess.enabled && store.remoteAccess.connectedClients > 0;
-          const accent = () => connected() ? theme.error : theme.fgMuted;
+          const enabled = () => store.remoteAccess.enabled;
+          const accent = () => enabled() ? theme.error : theme.fgMuted;
           return (
             <button
-              onClick={() => connected() ? stopRemoteAccess() : setShowConnectPhone(true)}
+              onClick={() => enabled() ? stopRemoteAccess() : setShowConnectPhone(true)}
               style={{
                 display: 'flex',
                 'align-items': 'center',
@@ -623,7 +623,7 @@ export function Sidebar() {
                 padding: '8px 12px',
                 margin: '4px 8px',
                 background: 'transparent',
-                border: `1px solid ${connected() ? theme.error : theme.border}`,
+                border: `1px solid ${enabled() ? theme.error : theme.border}`,
                 'border-radius': '8px',
                 color: accent(),
                 'font-size': sf(12),
@@ -635,7 +635,7 @@ export function Sidebar() {
                 <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
                 <line x1="12" y1="18" x2="12.01" y2="18" />
               </svg>
-              {connected() ? 'Disconnect Phone' : 'Connect Phone'}
+              {enabled() ? `Disconnect Phone${store.remoteAccess.connectedClients > 0 ? ` (${store.remoteAccess.connectedClients})` : ''}` : 'Connect Phone'}
             </button>
           );
         })()}

@@ -7,21 +7,31 @@ interface ServerResult {
   wifiUrl: string | null;
   tailscaleUrl: string | null;
   token: string;
+  tokenExpiresAt: number;
   port: number;
+}
+
+interface StartRemoteAccessOptions {
+  port?: number;
+  allowExternal?: boolean;
 }
 
 // Generation counter — incremented on stop so in-flight poll responses
 // that arrive after stop are discarded instead of overwriting the store.
 let stopGeneration = 0;
 
-export async function startRemoteAccess(port?: number): Promise<ServerResult> {
+export async function startRemoteAccess(options: StartRemoteAccessOptions = {}): Promise<ServerResult> {
   const result = await invoke<ServerResult>(
     IPC.StartRemoteServer,
-    port ? { port } : {}
+    {
+      ...(options.port ? { port: options.port } : {}),
+      ...(options.allowExternal !== undefined ? { allowExternal: options.allowExternal } : {}),
+    }
   );
   setStore("remoteAccess", {
     enabled: true,
     token: result.token,
+    tokenExpiresAt: result.tokenExpiresAt,
     port: result.port,
     url: result.url,
     wifiUrl: result.wifiUrl,
@@ -37,6 +47,7 @@ export async function stopRemoteAccess(): Promise<void> {
   setStore("remoteAccess", {
     enabled: false,
     token: null,
+    tokenExpiresAt: null,
     port: 7777,
     url: null,
     wifiUrl: null,
@@ -54,6 +65,7 @@ export async function refreshRemoteStatus(): Promise<void> {
     wifiUrl?: string;
     tailscaleUrl?: string;
     token?: string;
+    tokenExpiresAt?: number;
     port?: number;
   }>(IPC.GetRemoteStatus);
 
@@ -68,10 +80,12 @@ export async function refreshRemoteStatus(): Promise<void> {
       wifiUrl: result.wifiUrl ?? null,
       tailscaleUrl: result.tailscaleUrl ?? null,
       token: result.token ?? null,
+      tokenExpiresAt: result.tokenExpiresAt ?? null,
       port: result.port ?? 7777,
     });
   } else {
     setStore("remoteAccess", "enabled", false);
+    setStore("remoteAccess", "tokenExpiresAt", null);
     setStore("remoteAccess", "connectedClients", 0);
   }
 }

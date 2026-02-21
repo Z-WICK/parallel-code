@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { getToken, clearToken } from "./auth";
+import { getToken, setToken, clearToken } from "./auth";
 import type { ServerMessage, RemoteAgent } from "../../electron/remote/protocol";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
@@ -30,12 +30,14 @@ export function connect(): void {
   if (!token) return;
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${protocol}//${window.location.host}/ws?token=${token}`;
+  const url = `${protocol}//${window.location.host}/ws`;
+  const wsProtocol = `pc-token.${token}`;
 
   setStatus("connecting");
-  ws = new WebSocket(url);
+  ws = new WebSocket(url, wsProtocol);
 
   ws.onopen = () => {
+    send({ type: "auth", token });
     setStatus("connected");
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -76,6 +78,12 @@ export function connect(): void {
               : a
           )
         );
+        break;
+
+      case "token":
+        // Server rotates tokens in the background; persist immediately so
+        // reconnects and authenticated API calls stay seamless.
+        setToken(msg.token);
         break;
     }
   };

@@ -35,11 +35,21 @@ export interface ScrollbackMessage {
   cols: number;
 }
 
+export interface TokenMessage {
+  type: "token";
+  token: string;
+  tokenExpiresAt: number;
+  url: string;
+  wifiUrl: string | null;
+  tailscaleUrl: string | null;
+}
+
 export type ServerMessage =
   | OutputMessage
   | StatusMessage
   | AgentsMessage
-  | ScrollbackMessage;
+  | ScrollbackMessage
+  | TokenMessage;
 
 // --- Client -> Server messages ---
 
@@ -47,6 +57,11 @@ export interface InputCommand {
   type: "input";
   agentId: string;
   data: string;
+}
+
+export interface AuthCommand {
+  type: "auth";
+  token: string;
 }
 
 export interface ResizeCommand {
@@ -72,6 +87,7 @@ export interface UnsubscribeCommand {
 }
 
 export type ClientMessage =
+  | AuthCommand
   | InputCommand
   | ResizeCommand
   | KillCommand
@@ -83,6 +99,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   try {
     const msg = JSON.parse(raw) as Record<string, unknown>;
     if (typeof msg.type !== "string") return null;
+
+    if (msg.type === "auth") {
+      if (typeof msg.token !== "string") return null;
+      if (msg.token.length < 16 || msg.token.length > 256) return null;
+      return { type: "auth", token: msg.token };
+    }
+
     if (typeof msg.agentId !== "string" || msg.agentId.length > 100) return null;
 
     switch (msg.type) {

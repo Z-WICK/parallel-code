@@ -34,9 +34,14 @@ const MIME: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
+const TOKEN_TTL_MS = 10 * 60 * 1000;
+const TOKEN_EXPIRY_CHECK_MS = 5 * 1000;
+const TOKEN_GRACE_MS = 60 * 1000;
+
 interface RemoteServer {
   stop: () => Promise<void>;
   token: string;
+  tokenExpiresAt: number;
   port: number;
   url: string;
   tailscaleUrl: string | null;
@@ -93,27 +98,84 @@ function buildAgentList(
 
 export function startRemoteServer(opts: {
   port: number;
+  allowExternal: boolean;
   staticDir: string;
   getTaskName: (taskId: string) => string;
   getAgentStatus: (agentId: string) => { status: "running" | "exited"; exitCode: number | null; lastLine: string };
 }): RemoteServer {
-  const token = randomBytes(24).toString("base64url");
   const ips = getNetworkIps();
+  const authState: {
+    current: { token: string; tokenBuf: Buffer; expiresAt: number };
+    previous: { tokenBuf: Buffer; graceUntil: number } | null;
+  } = {
+    current: {
+      token: "",
+      tokenBuf: Buffer.alloc(0),
+      expiresAt: 0,
+    },
+    previous: null,
+  };
 
-  const tokenBuf = Buffer.from(token);
+  function issueToken(): { token: string; tokenBuf: Buffer; expiresAt: number } {
+    const token = randomBytes(24).toString("base64url");
+    return {
+      token,
+      tokenBuf: Buffer.from(token),
+      expiresAt: Date.now() + TOKEN_TTL_MS,
+    };
+  }
+  authState.current = issueToken();
 
   function safeCompare(candidate: string | null | undefined): boolean {
     if (!candidate) return false;
+    const now = Date.now();
     const buf = Buffer.from(candidate);
-    if (buf.length !== tokenBuf.length) return false;
-    return timingSafeEqual(buf, tokenBuf);
+    if (
+      now <= authState.current.expiresAt &&
+      buf.length === authState.current.tokenBuf.length &&
+      timingSafeEqual(buf, authState.current.tokenBuf)
+    ) {
+      return true;
+    }
+    if (
+      authState.previous &&
+      now <= authState.previous.graceUntil &&
+      buf.length === authState.previous.tokenBuf.length &&
+      timingSafeEqual(buf, authState.previous.tokenBuf)
+    ) {
+      return true;
+    }
+    return false;
   }
 
-  function checkAuth(req: IncomingMessage): boolean {
+  function checkAuthHeader(req: IncomingMessage): boolean {
     const auth = req.headers.authorization;
-    if (auth?.startsWith("Bearer ") && safeCompare(auth.slice(7))) return true;
+    return auth?.startsWith("Bearer ") ? safeCompare(auth.slice(7)) : false;
+  }
+
+  function getWsProtocolToken(req: IncomingMessage): string | null {
+    const raw = req.headers["sec-websocket-protocol"];
+    if (!raw) return null;
+    const value = Array.isArray(raw) ? raw.join(",") : raw;
+    const protocols = value
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    for (const protocol of protocols) {
+      if (protocol.startsWith("pc-token.")) {
+        return protocol.slice("pc-token.".length);
+      }
+    }
+    return null;
+  }
+
+  function getWsHandshakeToken(req: IncomingMessage): string | null {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith("Bearer ")) return auth.slice(7);
+    const protocolToken = getWsProtocolToken(req);
+    if (protocolToken) return protocolToken;
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    return safeCompare(url.searchParams.get("token"));
+    return url.searchParams.get("token");
   }
 
   const SECURITY_HEADERS: Record<string, string> = {
@@ -122,12 +184,21 @@ export function startRemoteServer(opts: {
     "Referrer-Policy": "no-referrer",
   };
 
+  function currentUrls(): { url: string; wifiUrl: string | null; tailscaleUrl: string | null } {
+    const localUrl = `http://127.0.0.1:${opts.port}/#token=${authState.current.token}`;
+    const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? "127.0.0.1") : "127.0.0.1";
+    const url = `http://${primaryIp}:${opts.port}/#token=${authState.current.token}`;
+    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/#token=${authState.current.token}` : null;
+    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/#token=${authState.current.token}` : null;
+    return { url: opts.allowExternal ? url : localUrl, wifiUrl, tailscaleUrl };
+  }
+
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
     // --- API routes (require auth) ---
     if (url.pathname.startsWith("/api/")) {
-      if (!checkAuth(req)) {
+      if (!checkAuthHeader(req)) {
         res.writeHead(401, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "unauthorized" }));
         return;
@@ -200,17 +271,59 @@ export function startRemoteServer(opts: {
     server,
     maxPayload: 64 * 1024,
     verifyClient: (info, cb) => {
+      const reqUrl = new URL(info.req.url ?? "/", `http://${info.req.headers.host ?? "localhost"}`);
+      if (reqUrl.pathname !== "/ws") {
+        cb(false, 404, "Not found");
+        return;
+      }
       if (wss.clients.size >= 10) {
         cb(false, 429, "Too many connections");
         return;
       }
-      if (!checkAuth(info.req)) {
+      if (!safeCompare(getWsHandshakeToken(info.req))) {
         cb(false, 401, "Unauthorized");
         return;
       }
       cb(true);
     },
   });
+
+  const authedClients = new Set<WebSocket>();
+
+  function rotateToken(): void {
+    const oldTokenBuf = authState.current.tokenBuf;
+    authState.current = issueToken();
+    authState.previous = {
+      tokenBuf: oldTokenBuf,
+      graceUntil: Date.now() + TOKEN_GRACE_MS,
+    };
+
+    const urls = currentUrls();
+    const tokenMessage = JSON.stringify({
+      type: "token",
+      token: authState.current.token,
+      tokenExpiresAt: authState.current.expiresAt,
+      url: urls.url,
+      wifiUrl: urls.wifiUrl,
+      tailscaleUrl: urls.tailscaleUrl,
+    } satisfies ServerMessage);
+
+    for (const client of authedClients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(tokenMessage);
+      }
+    }
+  }
+
+  const tokenExpiryTimer = setInterval(() => {
+    const now = Date.now();
+    if (now > authState.current.expiresAt) {
+      rotateToken();
+    }
+    if (authState.previous && now > authState.previous.graceUntil) {
+      authState.previous = null;
+    }
+  }, TOKEN_EXPIRY_CHECK_MS);
 
   const clientSubs = new WeakMap<WebSocket, Map<string, (data: string) => void>>();
 
@@ -246,17 +359,46 @@ export function startRemoteServer(opts: {
     }, 100);
   });
 
-  wss.on("connection", (ws) => {
-    const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
-    ws.send(JSON.stringify({ type: "agents", list } satisfies ServerMessage));
+  wss.on("connection", (ws, req) => {
+    let authed = safeCompare(getWsHandshakeToken(req));
+    const authTimeout = setTimeout(() => {
+      if (!authed && ws.readyState === WebSocket.OPEN) {
+        ws.close(4001, "Auth timeout");
+      }
+    }, 10_000);
+
+    function sendAgentList(): void {
+      const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
+      ws.send(JSON.stringify({ type: "agents", list } satisfies ServerMessage));
+    }
+
+    if (authed) {
+      authedClients.add(ws);
+      clearTimeout(authTimeout);
+      sendAgentList();
+    }
 
     clientSubs.set(ws, new Map());
 
     ws.on("message", (raw) => {
       const msg = parseClientMessage(String(raw));
       if (!msg) return;
+      if (!authed) {
+        if (msg.type !== "auth" || !safeCompare(msg.token)) {
+          ws.close(4001, "Unauthorized");
+          return;
+        }
+        authed = true;
+        authedClients.add(ws);
+        clearTimeout(authTimeout);
+        sendAgentList();
+        return;
+      }
 
       switch (msg.type) {
+        case "auth":
+          // Ignore duplicate auth frames after a client is authenticated.
+          break;
         case "input":
           try { writeToAgent(msg.agentId, msg.data); } catch { /* agent gone */ }
           break;
@@ -302,6 +444,8 @@ export function startRemoteServer(opts: {
     });
 
     ws.on("close", () => {
+      authedClients.delete(ws);
+      clearTimeout(authTimeout);
       const subs = clientSubs.get(ws);
       if (subs) {
         for (const [agentId, cb] of subs) {
@@ -314,25 +458,24 @@ export function startRemoteServer(opts: {
   server.on("error", (err) => {
     console.error("[remote] Server error:", err.message);
   });
-  server.listen(opts.port, "0.0.0.0");
-
-  const primaryIp = ips.wifi ?? ips.tailscale ?? "127.0.0.1";
-  const url = `http://${primaryIp}:${opts.port}?token=${token}`;
-  const wifiUrl = ips.wifi ? `http://${ips.wifi}:${opts.port}?token=${token}` : null;
-  const tailscaleUrl = ips.tailscale ? `http://${ips.tailscale}:${opts.port}?token=${token}` : null;
+  const bindHost = opts.allowExternal ? "0.0.0.0" : "127.0.0.1";
+  server.listen(opts.port, bindHost);
 
   return {
-    token,
+    get token() { return authState.current.token; },
+    get tokenExpiresAt() { return authState.current.expiresAt; },
     port: opts.port,
-    url,
-    wifiUrl,
-    tailscaleUrl,
+    get url() { return currentUrls().url; },
+    get wifiUrl() { return currentUrls().wifiUrl; },
+    get tailscaleUrl() { return currentUrls().tailscaleUrl; },
     connectedClients: () => wss.clients.size,
     stop: () => new Promise<void>((resolve) => {
       unsubSpawn();
       unsubExit();
       unsubListChanged();
+      clearInterval(tokenExpiryTimer);
       for (const client of wss.clients) client.close();
+      authedClients.clear();
       wss.close();
       server.close(() => resolve());
     }),
