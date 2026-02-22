@@ -254,9 +254,14 @@ function App() {
       }
 
       try {
+        let resizeTimer: ReturnType<typeof setTimeout> | undefined;
         unlistenResized = await appWindow.onResized(() => {
-          void syncWindowMaximized();
-          void captureWindowState();
+          if (resizeTimer !== undefined) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            resizeTimer = undefined;
+            void syncWindowMaximized();
+            void captureWindowState();
+          }, 200);
         });
       } catch {
         unlistenResized = null;
@@ -490,7 +495,12 @@ function App() {
       dialogSafe: true,
       handler: () => toggleSettingsDialog(),
     });
-    registerShortcut({ key: 'F1', global: true, dialogSafe: true, handler: () => toggleHelpDialog() });
+    registerShortcut({
+      key: 'F1',
+      global: true,
+      dialogSafe: true,
+      handler: () => toggleHelpDialog(),
+    });
     registerShortcut({
       key: 'Escape',
       dialogSafe: true,
@@ -646,7 +656,10 @@ function App() {
             </button>
           </Show>
           <TilingLayout />
-          <NewTaskDialog open={store.showNewTaskDialog} onClose={() => toggleNewTaskDialog(false)} />
+          <NewTaskDialog
+            open={store.showNewTaskDialog}
+            onClose={() => toggleNewTaskDialog(false)}
+          />
         </main>
         <Show when={!isMac}>
           <WindowResizeHandles />

@@ -1,7 +1,7 @@
 import { Show, For, createSignal, createResource, createEffect } from 'solid-js';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
-import { closeTask, mergeTask, pushTask, getProject } from '../store/store';
+import { store, closeTask, mergeTask, pushTask, getProject } from '../store/store';
 import { sendPrompt } from '../store/tasks';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ChangedFilesList } from './ChangedFilesList';
@@ -323,18 +323,22 @@ export function TaskDialogs(props: TaskDialogsProps) {
                     >
                       {rebasing() ? 'Rebasing...' : 'Rebase onto main'}
                     </button>
-                    <Show when={props.task.agentIds.length > 0}>
+                    <Show
+                      when={
+                        props.task.agentIds.length > 0 &&
+                        store.agents[props.task.agentIds[0]]?.status === 'running'
+                      }
+                    >
                       <button
                         type="button"
-                        onClick={async () => {
+                        onClick={() => {
                           const agentId = props.task.agentIds[0];
-                          try {
-                            setRebaseError('');
-                            await sendPrompt(props.task.id, agentId, 'rebase on main branch');
-                            props.onMergeConfirmDone();
-                          } catch (err) {
-                            setRebaseError(String(err));
-                          }
+                          props.onMergeConfirmDone();
+                          sendPrompt(props.task.id, agentId, 'rebase on main branch').catch(
+                            (err) => {
+                              console.error('Failed to send rebase prompt:', err);
+                            },
+                          );
                         }}
                         title="Close dialog and ask the AI agent to rebase"
                         style={{
@@ -536,21 +540,25 @@ export function TaskDialogs(props: TaskDialogsProps) {
         confirmDisabled={merging() || hasConflicts() || !hasCommittedChangesToMerge()}
         confirmLoading={merging()}
         confirmLabel={merging() ? 'Merging...' : squash() ? 'Squash Merge' : 'Merge'}
-        onConfirm={async () => {
+        onConfirm={() => {
+          const taskId = props.task.id;
+          const onDone = props.onMergeConfirmDone;
           setMergeError('');
           setMerging(true);
-          try {
-            await mergeTask(props.task.id, {
-              squash: squash(),
-              message: squash() ? squashMessage() || undefined : undefined,
-              cleanup: cleanupAfterMerge(),
+          void mergeTask(taskId, {
+            squash: squash(),
+            message: squash() ? squashMessage() || undefined : undefined,
+            cleanup: cleanupAfterMerge(),
+          })
+            .then(() => {
+              onDone();
+            })
+            .catch((err) => {
+              setMergeError(String(err));
+            })
+            .finally(() => {
+              setMerging(false);
             });
-            props.onMergeConfirmDone();
-          } catch (err) {
-            setMergeError(String(err));
-          } finally {
-            setMerging(false);
-          }
         }}
         onCancel={() => {
           props.onMergeConfirmDone();
@@ -590,19 +598,24 @@ export function TaskDialogs(props: TaskDialogsProps) {
           </div>
         }
         confirmLabel={pushing() ? 'Pushing...' : 'Push'}
-        onConfirm={async () => {
+        onConfirm={() => {
+          const taskId = props.task.id;
+          const onStart = props.onPushStart;
+          const onDone = props.onPushConfirmDone;
           setPushError('');
           setPushing(true);
-          props.onPushStart();
-          try {
-            await pushTask(props.task.id);
-            props.onPushConfirmDone(true);
-          } catch (err) {
-            setPushError(String(err));
-            props.onPushConfirmDone(false);
-          } finally {
-            setPushing(false);
-          }
+          onStart();
+          void pushTask(taskId)
+            .then(() => {
+              onDone(true);
+            })
+            .catch((err) => {
+              setPushError(String(err));
+              onDone(false);
+            })
+            .finally(() => {
+              setPushing(false);
+            });
         }}
         onCancel={() => {
           props.onPushConfirmDone(false);
