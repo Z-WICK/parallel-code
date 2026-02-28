@@ -3,6 +3,7 @@
 import { Show, createSignal, createEffect, onCleanup, createMemo, untrack } from "solid-js";
 import { Portal } from "solid-js/web";
 import { createFocusRestore } from "../lib/focus-restore";
+import { closeConnectPhoneModal, disconnectConnectPhoneModal } from "../lib/connect-phone-session";
 import { store } from "../store/core";
 import { startRemoteAccess, stopRemoteAccess, refreshRemoteStatus } from "../store/remote";
 import { theme } from "../lib/theme";
@@ -36,13 +37,28 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
 
   createFocusRestore(() => props.open);
 
-  async function closeAndStop(): Promise<void> {
+  function stopPollingNow(): void {
     stopPolling?.();
-    if (store.remoteAccess.enabled) {
-      await stopRemoteAccess();
-    }
-    setQrDataUrl(null);
-    props.onClose();
+  }
+
+  async function closeOnly(): Promise<void> {
+    await closeConnectPhoneModal({
+      stopPolling: stopPollingNow,
+      isRemoteAccessEnabled: store.remoteAccess.enabled,
+      stopRemoteAccess,
+      setQrDataUrl,
+      onClose: props.onClose,
+    });
+  }
+
+  async function disconnectAndClose(): Promise<void> {
+    await disconnectConnectPhoneModal({
+      stopPolling: stopPollingNow,
+      isRemoteAccessEnabled: store.remoteAccess.enabled,
+      stopRemoteAccess,
+      setQrDataUrl,
+      onClose: props.onClose,
+    });
   }
 
   async function generateQr(url: string) {
@@ -75,7 +91,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
     requestAnimationFrame(() => dialogRef?.focus());
 
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") void closeAndStop();
+      if (e.key === "Escape") void closeOnly();
     };
     document.addEventListener("keydown", handler);
     onCleanup(() => document.removeEventListener("keydown", handler));
@@ -112,7 +128,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
   });
 
   async function handleDisconnect() {
-    await closeAndStop();
+    await disconnectAndClose();
   }
 
   async function handleCopyUrl() {
@@ -149,7 +165,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
             background: "rgba(0,0,0,0.55)",
             "z-index": "1000",
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) void closeAndStop(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) void closeOnly(); }}
         >
           <div
             ref={dialogRef}
@@ -248,7 +264,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                 }>
                   <> Your phone and this computer must be on the same Tailscale network.</>
                 </Show>
-                {" "}Access token auto-rotates every 10 minutes without dropping connected sessions. Closing this dialog will disconnect remote access.
+                {" "}Access token auto-rotates every 10 minutes without dropping connected sessions. Closing this dialog will keep remote access active until you disconnect.
               </p>
 
               {/* Connected clients */}
