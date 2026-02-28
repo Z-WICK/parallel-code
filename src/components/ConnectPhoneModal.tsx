@@ -31,10 +31,6 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
       : store.remoteAccess.wifiUrl;
   });
 
-  const hasBothModes = createMemo(() =>
-    store.remoteAccess.wifiUrl !== null && store.remoteAccess.tailscaleUrl !== null
-  );
-
   createFocusRestore(() => props.open);
 
   function stopPollingNow(): void {
@@ -206,30 +202,74 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
 
             <Show when={!starting() && store.remoteAccess.enabled}>
               {/* Network mode toggle */}
-              <Show when={hasBothModes()}>
-                <div style={{
-                  display: "flex",
-                  gap: "4px",
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '4px',
                   background: theme.bgInput,
-                  "border-radius": "8px",
-                  padding: "3px",
-                }}>
-                  <button onClick={() => setMode("wifi")} style={pillStyle(mode() === "wifi")}>
+                  'border-radius': '8px',
+                  padding: '3px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    'flex-direction': 'column',
+                    'align-items': 'center',
+                    gap: '2px',
+                  }}
+                >
+                  <button
+                    onClick={() => setMode('wifi')}
+                    disabled={!store.remoteAccess.wifiUrl}
+                    style={{
+                      ...pillStyle(mode() === 'wifi' && !!store.remoteAccess.wifiUrl),
+                      ...(!store.remoteAccess.wifiUrl
+                        ? { opacity: '0.35', cursor: 'default' }
+                        : {}),
+                    }}
+                  >
                     WiFi
                   </button>
-                  <button onClick={() => setMode("tailscale")} style={pillStyle(mode() === "tailscale")}>
+                  <Show when={!store.remoteAccess.wifiUrl}>
+                    <span style={{ 'font-size': '9px', color: theme.fgSubtle }}>Not detected</span>
+                  </Show>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    'flex-direction': 'column',
+                    'align-items': 'center',
+                    gap: '2px',
+                  }}
+                >
+                  <button
+                    onClick={() => setMode('tailscale')}
+                    disabled={!store.remoteAccess.tailscaleUrl}
+                    style={{
+                      ...pillStyle(mode() === 'tailscale' && !!store.remoteAccess.tailscaleUrl),
+                      ...(!store.remoteAccess.tailscaleUrl
+                        ? { opacity: '0.35', cursor: 'default' }
+                        : {}),
+                    }}
+                  >
                     Tailscale
                   </button>
+                  <Show when={!store.remoteAccess.tailscaleUrl}>
+                    <span style={{ 'font-size': '9px', color: theme.fgSubtle }}>Not detected</span>
+                  </Show>
                 </div>
-              </Show>
+              </div>
 
               {/* QR Code */}
               <Show when={qrDataUrl()}>
-                <img
-                  src={qrDataUrl()!}
-                  alt="Connection QR code"
-                  style={{ width: "200px", height: "200px", "border-radius": "8px" }}
-                />
+                {(url) => (
+                  <img
+                    src={url()}
+                    alt="Connection QR code"
+                    style={{ width: '200px', height: '200px', 'border-radius': '8px' }}
+                  />
+                )}
               </Show>
 
               {/* URL */}

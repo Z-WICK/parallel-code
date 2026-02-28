@@ -103,7 +103,6 @@ export function startRemoteServer(opts: {
   getTaskName: (taskId: string) => string;
   getAgentStatus: (agentId: string) => { status: "running" | "exited"; exitCode: number | null; lastLine: string };
 }): RemoteServer {
-  const ips = getNetworkIps();
   const authState: {
     current: { token: string; tokenBuf: Buffer; expiresAt: number };
     previous: { tokenBuf: Buffer; graceUntil: number } | null;
@@ -185,6 +184,9 @@ export function startRemoteServer(opts: {
   };
 
   function currentUrls(): { url: string; wifiUrl: string | null; tailscaleUrl: string | null } {
+    // Re-detect interfaces dynamically so newly connected networks (e.g. Tailscale)
+    // are reflected without restarting the remote server.
+    const ips = getNetworkIps();
     const localUrl = `http://127.0.0.1:${opts.port}/#token=${authState.current.token}`;
     const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? "127.0.0.1") : "127.0.0.1";
     const url = `http://${primaryIp}:${opts.port}/#token=${authState.current.token}`;
