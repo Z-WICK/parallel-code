@@ -9,6 +9,7 @@ import { getTerminalFontFamily } from '../lib/fonts';
 import { getTerminalTheme } from '../lib/theme';
 import { matchesGlobalShortcut } from '../lib/shortcuts';
 import { isMac } from '../lib/platform';
+import { handleTerminalClipboardKeyEvent } from '../lib/terminal-clipboard';
 import { store } from '../store/store';
 import { registerTerminal, unregisterTerminal, markDirty } from '../lib/terminalFitManager';
 import type { PtyOutput } from '../ipc/types';
@@ -90,34 +91,16 @@ export function TerminalView(props: TerminalViewProps) {
     term.open(containerRef);
     props.onReady?.(() => term!.focus());
 
-    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.type !== 'keydown') return true;
-
-      // Let global app shortcuts pass through to the window handler
-      if (matchesGlobalShortcut(e)) return false;
-
-      const isCopy = isMac
-        ? e.metaKey && !e.shiftKey && e.key === 'c'
-        : e.ctrlKey && e.shiftKey && e.key === 'C';
-      const isPaste = isMac
-        ? e.metaKey && !e.shiftKey && e.key === 'v'
-        : e.ctrlKey && e.shiftKey && e.key === 'V';
-
-      if (isCopy) {
-        const sel = term!.getSelection();
-        if (sel) navigator.clipboard.writeText(sel);
-        return false;
-      }
-
-      if (isPaste) {
-        navigator.clipboard.readText().then((text) => {
-          if (text) enqueueInput(text);
-        });
-        return false;
-      }
-
-      return true;
-    });
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) =>
+      handleTerminalClipboardKeyEvent(e, {
+        isMac,
+        isGlobalShortcut: matchesGlobalShortcut,
+        getSelection: () => term!.getSelection(),
+        readClipboardText: () => navigator.clipboard.readText(),
+        writeClipboardText: (text) => navigator.clipboard.writeText(text),
+        enqueueInput,
+      }),
+    );
 
     fitAddon.fit();
     registerTerminal(agentId, containerRef, fitAddon, term);

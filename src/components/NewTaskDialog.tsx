@@ -279,7 +279,9 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
   const branchPreview = () => {
     const n = effectiveName();
     const prefix = sanitizeBranchPrefix(branchPrefix());
-    return n ? `${prefix}/${toBranchName(n)}` : '';
+    if (!n) return '';
+    const branchLeaf = toBranchName(n) || 'untitled';
+    return `${prefix}/${branchLeaf}`;
   };
 
   const selectedProjectPath = () => {

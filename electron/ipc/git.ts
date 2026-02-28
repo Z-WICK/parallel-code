@@ -26,6 +26,18 @@ function cacheKey(p: string): string {
   return p.replace(/\/+$/, '');
 }
 
+function errorToText(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (!error || typeof error !== 'object') return '';
+
+  const withMessage = error as { message?: string; stderr?: string };
+  return `${withMessage.message ?? ''}\n${withMessage.stderr ?? ''}`.toLowerCase();
+}
+
+function isBranchAlreadyExistsError(error: unknown): boolean {
+  return errorToText(error).includes('already exists');
+}
+
 // --- Worktree lock serialization ---
 
 const worktreeLocks = new Map<string, Promise<void>>();
@@ -214,7 +226,8 @@ export async function createWorktree(
   // Try -b first (new branch), fall back to existing branch
   try {
     await exec('git', ['worktree', 'add', '-b', branchName, worktreePath], { cwd: repoRoot });
-  } catch {
+  } catch (error) {
+    if (!isBranchAlreadyExistsError(error)) throw error;
     await exec('git', ['worktree', 'add', worktreePath, branchName], { cwd: repoRoot });
   }
 

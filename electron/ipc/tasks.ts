@@ -3,6 +3,7 @@ import { createWorktree, removeWorktree } from './git.js';
 import { killAgent, notifyAgentListChanged } from './pty.js';
 
 const MAX_SLUG_LEN = 72;
+const DEFAULT_TASK_SLUG = 'untitled';
 
 function slug(name: string): string {
   let result = '';
@@ -35,7 +36,8 @@ export async function createTask(
   branchPrefix: string,
 ): Promise<{ id: string; branch_name: string; worktree_path: string }> {
   const prefix = sanitizeBranchPrefix(branchPrefix);
-  const branchName = `${prefix}/${slug(name)}`;
+  const branchLeaf = slug(name) || DEFAULT_TASK_SLUG;
+  const branchName = `${prefix}/${branchLeaf}`;
   const worktree = await createWorktree(projectRoot, branchName, symlinkDirs);
   return {
     id: randomUUID(),
