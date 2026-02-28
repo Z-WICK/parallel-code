@@ -187,11 +187,12 @@ export function startRemoteServer(opts: {
     // Re-detect interfaces dynamically so newly connected networks (e.g. Tailscale)
     // are reflected without restarting the remote server.
     const ips = getNetworkIps();
-    const localUrl = `http://127.0.0.1:${opts.port}/#token=${authState.current.token}`;
+    // Use query token in the shared URL to avoid camera-app fragment loss on iOS.
+    const localUrl = `http://127.0.0.1:${opts.port}/?token=${authState.current.token}`;
     const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? "127.0.0.1") : "127.0.0.1";
-    const url = `http://${primaryIp}:${opts.port}/#token=${authState.current.token}`;
-    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/#token=${authState.current.token}` : null;
-    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/#token=${authState.current.token}` : null;
+    const url = `http://${primaryIp}:${opts.port}/?token=${authState.current.token}`;
+    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/?token=${authState.current.token}` : null;
+    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/?token=${authState.current.token}` : null;
     return { url: opts.allowExternal ? url : localUrl, wifiUrl, tailscaleUrl };
   }
 
