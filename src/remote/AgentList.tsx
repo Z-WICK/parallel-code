@@ -1,5 +1,6 @@
 import { For, Show, createMemo } from 'solid-js';
 import { agents, status } from './ws';
+import { getPreferredLocale, localize } from '../lib/i18n';
 import type { RemoteAgent } from '../../electron/remote/protocol';
 
 interface AgentListProps {
@@ -7,6 +8,8 @@ interface AgentListProps {
 }
 
 export function AgentList(props: AgentListProps) {
+  const locale = getPreferredLocale();
+  const t = (english: string, chinese: string) => localize(locale, english, chinese);
   const running = createMemo(() => agents().filter((a) => a.status === 'running').length);
   const total = createMemo(() => agents().length);
 
@@ -65,7 +68,9 @@ export function AgentList(props: AgentListProps) {
             'flex-shrink': '0',
           }}
         >
-          {status() === 'connecting' ? 'Reconnecting...' : 'Disconnected — check your network'}
+          {status() === 'connecting'
+            ? t('Reconnecting...', '重新连接中...')
+            : t('Disconnected — check your network', '连接断开，请检查网络')}
         </div>
       </Show>
 
@@ -91,8 +96,8 @@ export function AgentList(props: AgentListProps) {
               'font-size': '14px',
             }}
           >
-            <Show when={status() === 'connected'} fallback={<span>Connecting...</span>}>
-              <span>No active agents</span>
+            <Show when={status() === 'connected'} fallback={<span>{t('Connecting...', '连接中...')}</span>}>
+              <span>{t('No active agents', '当前没有活跃代理')}</span>
             </Show>
           </div>
         </Show>
@@ -110,14 +115,14 @@ export function AgentList(props: AgentListProps) {
             'line-height': '1.5',
           }}
         >
-          This is an experimental feature.{' '}
+          {t('This is an experimental feature.', '这是一个实验性功能。')}{' '}
           <a
             href="https://github.com/johannesjo/parallel-code/issues"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: '#2ec8ff' }}
           >
-            Report bugs
+            {t('Report bugs', '反馈问题')}
           </a>
         </div>
 
@@ -183,7 +188,7 @@ export function AgentList(props: AgentListProps) {
                     'flex-shrink': '0',
                   }}
                 >
-                  {agent.status}
+                  {agent.status === 'running' ? t('running', '运行中') : t('exited', '已退出')}
                 </span>
               </div>
 

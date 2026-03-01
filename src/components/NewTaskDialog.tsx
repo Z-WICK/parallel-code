@@ -20,6 +20,7 @@ import { toBranchName, sanitizeBranchPrefix } from '../lib/branch-name';
 import { cleanTaskName } from '../lib/clean-task-name';
 import { extractGitHubUrl } from '../lib/github-url';
 import { theme } from '../lib/theme';
+import { localize } from '../lib/i18n';
 import { AgentSelector } from './AgentSelector';
 import { BranchPrefixField } from './BranchPrefixField';
 import { ProjectSelect } from './ProjectSelect';
@@ -32,6 +33,7 @@ interface NewTaskDialogProps {
 }
 
 export function NewTaskDialog(props: NewTaskDialogProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [prompt, setPrompt] = createSignal('');
   const [name, setName] = createSignal('');
   const [selectedAgent, setSelectedAgent] = createSignal<AgentDef | null>(null);
@@ -128,7 +130,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
       const prefill = store.newTaskPrefillPrompt;
       if (prefill) {
         setPrompt(prefill.prompt);
-        setName('Compare arena results');
+        setName(t('Compare arena results', '对比 Arena 结果'));
         if (prefill.projectId) setSelectedProjectId(prefill.projectId);
       }
 
@@ -252,13 +254,13 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
 
     const agent = selectedAgent();
     if (!agent) {
-      setError('Select an agent');
+      setError(t('Select an agent', '请选择代理'));
       return;
     }
 
     const projectId = selectedProjectId();
     if (!projectId) {
-      setError('Select a project');
+      setError(t('Select a project', '请选择项目'));
       return;
     }
 
@@ -277,7 +279,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
       if (directMode()) {
         const projectPath = getProjectPath(projectId);
         if (!projectPath) {
-          setError('Project path not found');
+          setError(t('Project path not found', '未找到项目路径'));
           return;
         }
         const mainBranch = await invoke<string>(IPC.GetMainBranch, { projectRoot: projectPath });
@@ -286,7 +288,10 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
         });
         if (currentBranch !== mainBranch) {
           setError(
-            `Repository is on branch "${currentBranch}", not "${mainBranch}". Please checkout ${mainBranch} first.`,
+            t(
+              `Repository is on branch "${currentBranch}", not "${mainBranch}". Please checkout ${mainBranch} first.`,
+              `当前仓库分支为 "${currentBranch}"，不是 "${mainBranch}"。请先切换到 ${mainBranch}。`,
+            ),
           );
           return;
         }
@@ -343,14 +348,20 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
               'font-weight': '600',
             }}
           >
-            New Task
+            {t('New Task', '新建任务')}
           </h2>
           <p
             style={{ margin: '0', 'font-size': '12px', color: theme.fgMuted, 'line-height': '1.5' }}
           >
             {directMode()
-              ? 'The AI agent will work directly on your main branch in the project root.'
-              : 'Creates a git branch and worktree so the AI agent can work in isolation without affecting your main branch.'}
+              ? t(
+                  'The AI agent will work directly on your main branch in the project root.',
+                  'AI 代理将在项目根目录直接操作主分支。',
+                )
+              : t(
+                  'Creates a git branch and worktree so the AI agent can work in isolation without affecting your main branch.',
+                  '将创建 Git 分支和 worktree，使 AI 代理在隔离环境中工作而不影响主分支。',
+                )}
           </p>
         </div>
 
@@ -367,7 +378,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
               'letter-spacing': '0.05em',
             }}
           >
-            Project
+            {t('Project', '项目')}
           </label>
           <ProjectSelect
             value={selectedProjectId()}
@@ -388,7 +399,10 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
               'letter-spacing': '0.05em',
             }}
           >
-            Prompt <span style={{ opacity: '0.5', 'text-transform': 'none' }}>(optional)</span>
+            {t('Prompt', '提示词')}{' '}
+            <span style={{ opacity: '0.5', 'text-transform': 'none' }}>
+              {t('(optional)', '（可选）')}
+            </span>
           </label>
           <textarea
             ref={promptRef}
@@ -402,7 +416,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                 if (canSubmit()) handleSubmit(e);
               }
             }}
-            placeholder="What should the agent work on?"
+            placeholder={t('What should the agent work on?', '你希望代理完成什么工作？')}
             rows={3}
             style={{
               background: theme.bgInput,
@@ -430,9 +444,9 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
               'letter-spacing': '0.05em',
             }}
           >
-            Task name{' '}
+            {t('Task name', '任务名称')}{' '}
             <span style={{ opacity: '0.5', 'text-transform': 'none' }}>
-              (optional — derived from prompt)
+              {t('(optional — derived from prompt)', '（可选，将从提示词自动推导）')}
             </span>
           </label>
           <input
@@ -440,7 +454,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
             type="text"
             value={name()}
             onInput={(e) => setName(e.currentTarget.value)}
-            placeholder={effectiveName() || 'Add user authentication'}
+            placeholder={effectiveName() || t('Add user authentication', '添加用户认证')}
             style={{
               background: theme.bgInput,
               border: `1px solid ${theme.border}`,
@@ -473,7 +487,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                 >
                   <path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm6.25 7.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 7.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm0 0h5.5a2.5 2.5 0 0 0 2.5-2.5v-.5a.75.75 0 0 0-1.5 0v.5a1 1 0 0 1-1 1H5a3.25 3.25 0 1 0 0 6.5h6.25a.75.75 0 0 0 0-1.5H5a1.75 1.75 0 1 1 0-3.5Z" />
                 </svg>
-                main branch (detected on create)
+                {t('main branch (detected on create)', '主分支（创建时自动检测）')}
               </span>
               <span style={{ display: 'flex', 'align-items': 'center', gap: '6px' }}>
                 <svg
@@ -529,11 +543,11 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
               onChange={(e) => setDirectMode(e.currentTarget.checked)}
               style={{ 'accent-color': theme.accent, cursor: 'inherit' }}
             />
-            Work directly on main branch
+            {t('Work directly on main branch', '直接在主分支工作')}
           </label>
           <Show when={directModeDisabled()}>
             <span style={{ 'font-size': '11px', color: theme.fgSubtle }}>
-              A direct-mode task already exists for this project
+              {t('A direct-mode task already exists for this project', '该项目已存在直连模式任务')}
             </span>
           </Show>
           <Show when={directMode()}>
@@ -547,7 +561,10 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                 border: `1px solid color-mix(in srgb, ${theme.warning} 20%, transparent)`,
               }}
             >
-              Changes will be made directly on the main branch without worktree isolation.
+              {t(
+                'Changes will be made directly on the main branch without worktree isolation.',
+                '修改将直接提交到主分支，不使用 worktree 隔离。',
+              )}
             </div>
           </Show>
         </div>
@@ -574,7 +591,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                 onChange={(e) => setSkipPermissions(e.currentTarget.checked)}
                 style={{ 'accent-color': theme.accent, cursor: 'inherit' }}
               />
-              Dangerously skip all confirms
+              {t('Dangerously skip all confirms', '危险：跳过所有确认')}
             </label>
             <Show when={skipPermissions()}>
               <div
@@ -587,8 +604,10 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                   border: `1px solid color-mix(in srgb, ${theme.warning} 20%, transparent)`,
                 }}
               >
-                The agent will run without asking for confirmation. It can read, write, and delete
-                files, and execute commands without your approval.
+                {t(
+                  'The agent will run without asking for confirmation. It can read, write, and delete files, and execute commands without your approval.',
+                  '代理将不再请求确认。它可以在未获批准时读取、写入、删除文件并执行命令。',
+                )}
               </div>
             </Show>
           </div>
@@ -645,7 +664,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
               'font-size': '13px',
             }}
           >
-            Cancel
+            {t('Cancel', '取消')}
           </button>
           <button
             type="submit"
@@ -669,7 +688,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
             <Show when={loading()}>
               <span class="inline-spinner" aria-hidden="true" />
             </Show>
-            {loading() ? 'Creating...' : 'Create Task'}
+            {loading() ? t('Creating...', '创建中...') : t('Create Task', '创建任务')}
           </button>
         </div>
       </form>

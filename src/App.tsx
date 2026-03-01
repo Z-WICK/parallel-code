@@ -49,10 +49,12 @@ import { setupAutosave } from './store/autosave';
 import { isMac, mod } from './lib/platform';
 import { createCtrlWheelZoomHandler } from './lib/wheelZoom';
 import { ArenaOverlay } from './arena/ArenaOverlay';
+import { localize } from './lib/i18n';
 
 const MIN_WINDOW_DIMENSION = 100;
 
 function DropOverlay() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   return (
     <div
       style={{
@@ -86,7 +88,7 @@ function DropOverlay() {
           'font-family': 'var(--font-ui)',
         }}
       >
-        Drop GitHub link to create task
+        {t('Drop GitHub link to create task', '拖放 GitHub 链接以创建任务')}
       </span>
       <span
         style={{
@@ -95,13 +97,14 @@ function DropOverlay() {
           'font-family': 'var(--font-ui)',
         }}
       >
-        A new task will be created with the link in the prompt
+        {t('A new task will be created with the link in the prompt', '将使用该链接作为提示词创建新任务')}
       </span>
     </div>
   );
 }
 
 function App() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   let mainRef!: HTMLDivElement;
   const [windowFocused, setWindowFocused] = createSignal(true);
   const [windowMaximized, setWindowMaximized] = createSignal(false);
@@ -229,6 +232,7 @@ function App() {
   // Sync theme preset to <html> so Portal content inherits CSS variables
   createEffect(() => {
     document.documentElement.dataset.look = store.themePreset;
+    document.documentElement.lang = store.locale;
   });
 
   onMount(async () => {
@@ -334,15 +338,21 @@ function App() {
       try {
         const countLabel =
           runningCount === 1
-            ? '1 running terminal session'
-            : `${runningCount} running terminal sessions`;
+            ? t('1 running terminal session', '1 个运行中的终端会话')
+            : t(
+                `${runningCount} running terminal sessions`,
+                `${runningCount} 个运行中的终端会话`,
+              );
         const shouldKill = await confirm(
-          `You have ${countLabel}. They can be restored on app restart. Kill them and quit, or keep them alive in the background?`,
+          t(
+            `You have ${countLabel}. They can be restored on app restart. Kill them and quit, or keep them alive in the background?`,
+            `你有 ${countLabel}。重启应用后可以恢复。要结束它们并退出，还是保持后台运行？`,
+          ),
           {
-            title: 'Running Terminals',
+            title: t('Running Terminals', '运行中的终端'),
             kind: 'warning',
-            okLabel: 'Kill & Quit',
-            cancelLabel: 'Keep in Background',
+            okLabel: t('Kill & Quit', '结束并退出'),
+            cancelLabel: t('Keep in Background', '保持后台运行'),
           },
         ).catch(() => false);
 
@@ -569,7 +579,7 @@ function App() {
           }}
         >
           <div style={{ 'font-size': '18px', 'font-weight': '600', color: theme.error }}>
-            Something went wrong
+            {t('Something went wrong', '出现错误')}
           </div>
           <div
             style={{
@@ -593,7 +603,7 @@ function App() {
               'font-size': '14px',
             }}
           >
-            Reload
+            {t('Reload', '重新加载')}
           </button>
         </div>
       )}

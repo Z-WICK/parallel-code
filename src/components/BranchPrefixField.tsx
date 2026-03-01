@@ -1,5 +1,7 @@
 import { Show } from 'solid-js';
 import { theme } from '../lib/theme';
+import { store } from '../store/store';
+import { localize } from '../lib/i18n';
 
 interface BranchPrefixFieldProps {
   branchPrefix: string;
@@ -9,6 +11,7 @@ interface BranchPrefixFieldProps {
 }
 
 export function BranchPrefixField(props: BranchPrefixFieldProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   return (
     <div
       data-nav-field="branch-prefix"
@@ -16,14 +19,14 @@ export function BranchPrefixField(props: BranchPrefixFieldProps) {
     >
       <div style={{ display: 'flex', 'align-items': 'center', gap: '6px' }}>
         <label style={{ 'font-size': '11px', color: theme.fgSubtle, 'white-space': 'nowrap' }}>
-          Branch prefix
+          {t('Branch prefix', '分支前缀')}
         </label>
         <input
           class="input-field"
           type="text"
           value={props.branchPrefix}
           onInput={(e) => props.onPrefixChange(e.currentTarget.value)}
-          placeholder="task"
+          placeholder={t('task', 'task')}
           style={{
             background: theme.bgInput,
             border: `1px solid ${theme.border}`,

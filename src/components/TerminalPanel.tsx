@@ -17,6 +17,7 @@ import { TerminalView } from './TerminalView';
 import { ScalablePanel } from './ScalablePanel';
 import { theme } from '../lib/theme';
 import { handleDragReorder } from '../lib/dragReorder';
+import { localize } from '../lib/i18n';
 import type { Terminal } from '../store/types';
 
 interface TerminalPanelProps {
@@ -25,6 +26,7 @@ interface TerminalPanelProps {
 }
 
 export function TerminalPanel(props: TerminalPanelProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   let panelRef!: HTMLDivElement;
   let titleEditHandle: EditableTextHandle | undefined;
 
@@ -124,7 +126,7 @@ export function TerminalPanel(props: TerminalPanelProps) {
               </svg>
             }
             onClick={() => closeTerminal(props.terminal.id)}
-            title="Close terminal"
+            title={t('Close terminal', '关闭终端')}
           />
         </div>
       </div>

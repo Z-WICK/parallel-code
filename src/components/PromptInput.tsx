@@ -2,6 +2,7 @@ import { createSignal, createEffect, onMount, onCleanup, untrack } from 'solid-j
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import {
+  store,
   sendPrompt,
   registerFocusFn,
   unregisterFocusFn,
@@ -21,6 +22,7 @@ import {
 } from '../store/store';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
+import { localize } from '../lib/i18n';
 
 export interface PromptInputHandle {
   getText: () => string;
@@ -68,6 +70,7 @@ function isQuestionBlockingAutoSend(tail: string): boolean {
 }
 
 export function PromptInput(props: PromptInputProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [text, setText] = createSignal('');
   const [sending, setSending] = createSignal(false);
   const [autoSentInitialPrompt, setAutoSentInitialPrompt] = createSignal<string | null>(null);
@@ -384,8 +387,8 @@ export function PromptInput(props: PromptInputProps) {
           }}
           placeholder={
             questionActive()
-              ? 'Agent is waiting for input in terminal…'
-              : 'Send a prompt... (Enter to send, Shift+Enter for newline)'
+              ? t('Agent is waiting for input in terminal…', '代理正在终端中等待输入…')
+              : t('Send a prompt... (Enter to send, Shift+Enter for newline)', '发送提示词...（Enter 发送，Shift+Enter 换行）')
           }
           style={{
             flex: '1',
@@ -423,7 +426,7 @@ export function PromptInput(props: PromptInputProps) {
             padding: '0',
             transition: 'background 0.15s, color 0.15s',
           }}
-          title="Send prompt"
+          title={t('Send prompt', '发送提示词')}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path

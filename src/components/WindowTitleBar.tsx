@@ -1,7 +1,10 @@
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import { appWindow } from '../lib/window';
+import { store } from '../store/store';
+import { localize } from '../lib/i18n';
 
 export function WindowTitleBar() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [isFocused, setIsFocused] = createSignal(true);
   const [isMaximized, setIsMaximized] = createSignal(false);
 
@@ -106,8 +109,8 @@ export function WindowTitleBar() {
               console.warn('Failed to minimize window', error);
             });
           }}
-          aria-label="Minimize window"
-          title="Minimize"
+          aria-label={t('Minimize window', '最小化窗口')}
+          title={t('Minimize', '最小化')}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
             <path d="M1 5h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
@@ -116,8 +119,10 @@ export function WindowTitleBar() {
         <button
           class="window-control-btn"
           onClick={() => void handleToggleMaximize()}
-          aria-label={isMaximized() ? 'Restore window' : 'Maximize window'}
-          title={isMaximized() ? 'Restore' : 'Maximize'}
+          aria-label={
+            isMaximized() ? t('Restore window', '还原窗口') : t('Maximize window', '最大化窗口')
+          }
+          title={isMaximized() ? t('Restore', '还原') : t('Maximize', '最大化')}
         >
           {isMaximized() ? (
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -137,8 +142,8 @@ export function WindowTitleBar() {
               console.warn('Failed to close window', error);
             });
           }}
-          aria-label="Close window"
-          title="Close"
+          aria-label={t('Close window', '关闭窗口')}
+          title={t('Close', '关闭')}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
             <path

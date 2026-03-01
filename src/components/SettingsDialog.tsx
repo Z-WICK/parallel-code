@@ -3,10 +3,12 @@ import { Dialog } from './Dialog';
 import { getAvailableTerminalFonts, getTerminalFontFamily, LIGATURE_FONTS } from '../lib/fonts';
 import { LOOK_PRESETS } from '../lib/look';
 import { theme } from '../lib/theme';
+import { localize } from '../lib/i18n';
 import {
   store,
   setTerminalFont,
   setThemePreset,
+  setLocale,
   setAutoTrustFolders,
   setInactiveColumnOpacity,
 } from '../store/store';
@@ -20,6 +22,46 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
+
+  const presetLabel = (id: (typeof LOOK_PRESETS)[number]['id']): string => {
+    switch (id) {
+      case 'minimal':
+        return t('Minimal', '极简');
+      case 'graphite':
+        return t('Graphite', '石墨');
+      case 'classic':
+        return t('Classic', '经典');
+      case 'indigo':
+        return t('Indigo', '靛蓝');
+      case 'ember':
+        return t('Ember', '余烬');
+      case 'glacier':
+        return t('Glacier', '冰川');
+      default:
+        return id;
+    }
+  };
+
+  const presetDescription = (id: (typeof LOOK_PRESETS)[number]['id']): string => {
+    switch (id) {
+      case 'minimal':
+        return t('Flat monochrome with warm off-white accent', '暖白点缀的扁平单色风格');
+      case 'graphite':
+        return t('Cool neon blue with subtle glow', '冷调霓虹蓝与微光效果');
+      case 'classic':
+        return t('Original dark utilitarian look', '原始深色实用主义风格');
+      case 'indigo':
+        return t('Deep indigo base with electric violet accents', '深靛蓝基底与电光紫点缀');
+      case 'ember':
+        return t('Warm copper highlights and contrast', '暖铜色高光与高对比');
+      case 'glacier':
+        return t('Clean teal accents with softer depth', '清爽青色点缀与更柔和层次');
+      default:
+        return '';
+    }
+  };
+
   const fonts = createMemo<TerminalFont[]>(() => {
     const available = getAvailableTerminalFonts();
     // Always include the currently selected font so it stays visible even if detection misses it
@@ -51,10 +93,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
               'font-weight': '600',
             }}
           >
-            Settings
+            {t('Settings', '设置')}
           </h2>
           <span style={{ 'font-size': '12px', color: theme.fgSubtle }}>
-            Customize your workspace. Shortcut:{' '}
+            {t('Customize your workspace. Shortcut:', '自定义你的工作区。快捷键:')}{' '}
             <kbd
               style={{
                 background: theme.bgInput,
@@ -95,7 +137,39 @@ export function SettingsDialog(props: SettingsDialogProps) {
             'font-weight': '600',
           }}
         >
-          Theme
+          {t('Language', '语言')}
+        </div>
+        <div class="settings-theme-grid" style={{ 'grid-template-columns': 'repeat(2, minmax(0, 1fr))' }}>
+          <button
+            type="button"
+            class={`settings-theme-card${store.locale === 'en' ? ' active' : ''}`}
+            onClick={() => setLocale('en')}
+          >
+            <span class="settings-theme-title">English</span>
+            <span class="settings-theme-desc">{t('English interface', '英文界面')}</span>
+          </button>
+          <button
+            type="button"
+            class={`settings-theme-card${store.locale === 'zh-CN' ? ' active' : ''}`}
+            onClick={() => setLocale('zh-CN')}
+          >
+            <span class="settings-theme-title">简体中文</span>
+            <span class="settings-theme-desc">{t('Chinese interface', '中文界面')}</span>
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', 'flex-direction': 'column', gap: '10px' }}>
+        <div
+          style={{
+            'font-size': '11px',
+            color: theme.fgMuted,
+            'text-transform': 'uppercase',
+            'letter-spacing': '0.05em',
+            'font-weight': '600',
+          }}
+        >
+          {t('Theme', '主题')}
         </div>
         <div class="settings-theme-grid">
           <For each={LOOK_PRESETS}>
@@ -105,8 +179,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 class={`settings-theme-card${store.themePreset === preset.id ? ' active' : ''}`}
                 onClick={() => setThemePreset(preset.id)}
               >
-                <span class="settings-theme-title">{preset.label}</span>
-                <span class="settings-theme-desc">{preset.description}</span>
+                <span class="settings-theme-title">{presetLabel(preset.id)}</span>
+                <span class="settings-theme-desc">{presetDescription(preset.id)}</span>
               </button>
             )}
           </For>
@@ -123,7 +197,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             'font-weight': '600',
           }}
         >
-          Behavior
+          {t('Behavior', '行为')}
         </div>
         <label
           style={{
@@ -144,9 +218,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
             style={{ 'accent-color': theme.accent, cursor: 'pointer' }}
           />
           <div style={{ display: 'flex', 'flex-direction': 'column', gap: '2px' }}>
-            <span style={{ 'font-size': '13px', color: theme.fg }}>Auto-trust folders</span>
+            <span style={{ 'font-size': '13px', color: theme.fg }}>
+              {t('Auto-trust folders', '自动信任文件夹')}
+            </span>
             <span style={{ 'font-size': '11px', color: theme.fgSubtle }}>
-              Automatically accept trust and permission dialogs from agents
+              {t(
+                'Automatically accept trust and permission dialogs from agents',
+                '自动接受来自代理的信任与权限对话框',
+              )}
             </span>
           </div>
         </label>
@@ -162,7 +241,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             'font-weight': '600',
           }}
         >
-          Focus Dimming
+          {t('Focus Dimming', '聚焦弱化')}
         </div>
         <div
           style={{
@@ -182,7 +261,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               'justify-content': 'space-between',
             }}
           >
-            <span style={{ 'font-size': '13px', color: theme.fg }}>Inactive column opacity</span>
+            <span style={{ 'font-size': '13px', color: theme.fg }}>
+              {t('Inactive column opacity', '非活动列透明度')}
+            </span>
             <span
               style={{
                 'font-size': '12px',
@@ -216,8 +297,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               color: theme.fgSubtle,
             }}
           >
-            <span>More dimmed</span>
-            <span>No dimming</span>
+            <span>{t('More dimmed', '更暗')}</span>
+            <span>{t('No dimming', '不弱化')}</span>
           </div>
         </div>
       </div>
@@ -232,7 +313,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             'font-weight': '600',
           }}
         >
-          Custom Agents
+          {t('Custom Agents', '自定义代理')}
         </div>
         <CustomAgentEditor />
       </div>
@@ -247,7 +328,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             'font-weight': '600',
           }}
         >
-          Terminal Font
+          {t('Terminal Font', '终端字体')}
         </div>
         <div class="settings-font-grid">
           <For each={fonts()}>
@@ -270,7 +351,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
         </div>
         <Show when={LIGATURE_FONTS.has(store.terminalFont)}>
           <span style={{ 'font-size': '11px', color: theme.fgSubtle }}>
-            This font includes ligatures which may impact rendering performance.
+            {t(
+              'This font includes ligatures which may impact rendering performance.',
+              '该字体包含连字，可能影响渲染性能。',
+            )}
           </span>
         </Show>
       </div>

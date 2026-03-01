@@ -1,6 +1,7 @@
 import { For } from 'solid-js';
 import { store } from '../store/store';
 import { theme } from '../lib/theme';
+import { localize } from '../lib/i18n';
 import type { AgentDef } from '../ipc/types';
 
 interface AgentSelectorProps {
@@ -10,6 +11,7 @@ interface AgentSelectorProps {
 }
 
 export function AgentSelector(props: AgentSelectorProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   return (
     <div data-nav-field="agent" style={{ display: 'flex', 'flex-direction': 'column', gap: '8px' }}>
       <label
@@ -20,7 +22,7 @@ export function AgentSelector(props: AgentSelectorProps) {
           'letter-spacing': '0.05em',
         }}
       >
-        Agent
+        {t('Agent', '代理')}
       </label>
       <div style={{ display: 'flex', gap: '8px' }}>
         <For each={props.agents}>
@@ -57,7 +59,7 @@ export function AgentSelector(props: AgentSelectorProps) {
                       'margin-left': '4px',
                     }}
                   >
-                    (not installed)
+                    {t('(not installed)', '（未安装）')}
                   </span>
                 )}
               </button>

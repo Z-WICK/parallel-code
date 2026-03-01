@@ -1,9 +1,11 @@
 import { For, Show, createSignal } from 'solid-js';
 import { store, addCustomAgent, removeCustomAgent } from '../store/store';
 import { theme } from '../lib/theme';
+import { localize } from '../lib/i18n';
 import type { AgentDef } from '../ipc/types';
 
 export function CustomAgentEditor() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [showForm, setShowForm] = createSignal(false);
   const [name, setName] = createSignal('');
   const [command, setCommand] = createSignal('');
@@ -26,7 +28,7 @@ export function CustomAgentEditor() {
       args: [],
       resume_args: resumeArgs().trim() ? resumeArgs().trim().split(/\s+/) : [],
       skip_permissions_args: skipArgs().trim() ? skipArgs().trim().split(/\s+/) : [],
-      description: `Custom agent: ${n}`,
+      description: t(`Custom agent: ${n}`, `自定义代理: ${n}`),
     };
     addCustomAgent(agent);
     setName('');
@@ -106,7 +108,7 @@ export function CustomAgentEditor() {
             'font-size': '12px',
           }}
         >
-          + Add custom agent
+          + {t('Add custom agent', '添加自定义代理')}
         </button>
       </Show>
 
@@ -124,28 +126,34 @@ export function CustomAgentEditor() {
         >
           <input
             type="text"
-            placeholder="Name (e.g. OpenCode)"
+            placeholder={t('Name (e.g. OpenCode)', '名称（例如 OpenCode）')}
             value={name()}
             onInput={(e) => setName(e.currentTarget.value)}
             style={inputStyle()}
           />
           <input
             type="text"
-            placeholder="Command (e.g. opencode)"
+            placeholder={t('Command (e.g. opencode)', '命令（例如 opencode）')}
             value={command()}
             onInput={(e) => setCommand(e.currentTarget.value)}
             style={inputStyle()}
           />
           <input
             type="text"
-            placeholder="Resume args (optional, space-separated)"
+            placeholder={t(
+              'Resume args (optional, space-separated)',
+              '恢复参数（可选，空格分隔）',
+            )}
             value={resumeArgs()}
             onInput={(e) => setResumeArgs(e.currentTarget.value)}
             style={inputStyle()}
           />
           <input
             type="text"
-            placeholder="Skip permissions args (optional, space-separated)"
+            placeholder={t(
+              'Skip permissions args (optional, space-separated)',
+              '跳过权限参数（可选，空格分隔）',
+            )}
             value={skipArgs()}
             onInput={(e) => setSkipArgs(e.currentTarget.value)}
             style={inputStyle()}
@@ -163,8 +171,8 @@ export function CustomAgentEditor() {
                 cursor: 'pointer',
                 'font-size': '12px',
               }}
-            >
-              Cancel
+              >
+              {t('Cancel', '取消')}
             </button>
             <button
               type="button"
@@ -179,8 +187,8 @@ export function CustomAgentEditor() {
                 'font-size': '12px',
                 opacity: name().trim() && command().trim() ? 1 : 0.5,
               }}
-            >
-              Add Agent
+              >
+              {t('Add Agent', '添加代理')}
             </button>
           </div>
         </div>

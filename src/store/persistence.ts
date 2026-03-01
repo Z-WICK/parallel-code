@@ -16,6 +16,7 @@ import type {
 import type { AgentDef } from '../ipc/types';
 import { DEFAULT_TERMINAL_FONT, isTerminalFont } from '../lib/fonts';
 import { isLookPreset } from '../lib/look';
+import { isAppLocale, getPreferredLocale } from '../lib/i18n';
 import { syncTerminalCounter } from './terminals';
 
 export async function saveState(): Promise<void> {
@@ -36,6 +37,7 @@ export async function saveState(): Promise<void> {
     mergedLinesRemoved: store.mergedLinesRemoved,
     terminalFont: store.terminalFont,
     themePreset: store.themePreset,
+    locale: store.locale,
     windowState: store.windowState ? { ...store.windowState } : undefined,
     autoTrustFolders: store.autoTrustFolders,
     inactiveColumnOpacity: store.inactiveColumnOpacity,
@@ -222,6 +224,7 @@ export async function loadState(): Promise<void> {
         ? rawAny.terminalFont
         : DEFAULT_TERMINAL_FONT;
       s.themePreset = isLookPreset(rawAny.themePreset) ? rawAny.themePreset : 'minimal';
+      s.locale = isAppLocale(rawAny.locale) ? rawAny.locale : getPreferredLocale();
       s.windowState = parsePersistedWindowState(rawAny.windowState);
       s.autoTrustFolders =
         typeof rawAny.autoTrustFolders === 'boolean' ? rawAny.autoTrustFolders : false;

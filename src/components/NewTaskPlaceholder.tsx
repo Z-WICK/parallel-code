@@ -3,8 +3,10 @@ import { toggleNewTaskDialog, createTerminal, store, unfocusPlaceholder } from '
 import { registerFocusFn, unregisterFocusFn } from '../store/focus';
 import { theme } from '../lib/theme';
 import { mod } from '../lib/platform';
+import { localize } from '../lib/i18n';
 
 export function NewTaskPlaceholder() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   let addTaskRef: HTMLDivElement | undefined;
   let addTerminalRef: HTMLDivElement | undefined;
 
@@ -48,7 +50,7 @@ export function NewTaskPlaceholder() {
         class="new-task-placeholder"
         role="button"
         tabIndex={0}
-        aria-label="New task"
+        aria-label={t('New task', '新建任务')}
         onClick={() => toggleNewTaskDialog(true)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -69,7 +71,7 @@ export function NewTaskPlaceholder() {
           'font-size': '20px',
           'user-select': 'none',
         }}
-        title={`New task (${mod}+N)`}
+        title={t(`New task (${mod}+N)`, `新建任务 (${mod}+N)`)}
       >
         +
       </div>
@@ -80,7 +82,7 @@ export function NewTaskPlaceholder() {
         class="new-task-placeholder"
         role="button"
         tabIndex={0}
-        aria-label="New terminal"
+        aria-label={t('New terminal', '新建终端')}
         onClick={() => createTerminal()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -104,7 +106,7 @@ export function NewTaskPlaceholder() {
           'user-select': 'none',
           'flex-shrink': '0',
         }}
-        title={`New terminal (${mod}+Shift+D)`}
+        title={t(`New terminal (${mod}+Shift+D)`, `新建终端 (${mod}+Shift+D)`)}
       >
         &gt;_
       </div>

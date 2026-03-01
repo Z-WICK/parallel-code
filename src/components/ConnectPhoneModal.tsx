@@ -7,6 +7,7 @@ import { closeConnectPhoneModal, disconnectConnectPhoneModal } from "../lib/conn
 import { store } from "../store/core";
 import { startRemoteAccess, stopRemoteAccess, refreshRemoteStatus } from "../store/remote";
 import { theme } from "../lib/theme";
+import { localize } from "../lib/i18n";
 
 type NetworkMode = "wifi" | "tailscale";
 
@@ -16,6 +17,7 @@ interface ConnectPhoneModalProps {
 }
 
 export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [qrDataUrl, setQrDataUrl] = createSignal<string | null>(null);
   const [starting, setStarting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -103,7 +105,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
         generateQr(url);
       }).catch((err: unknown) => {
         setStarting(false);
-        setError(err instanceof Error ? err.message : "Failed to start server");
+        setError(err instanceof Error ? err.message : t("Failed to start server", "启动服务失败"));
       });
     } else {
       // Re-derive mode if network changed since last open
@@ -183,14 +185,16 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
           >
             <div style={{ "text-align": "center" }}>
               <h2 style={{ margin: "0", "font-size": "16px", color: theme.fg, "font-weight": "600" }}>
-                Connect Phone
+                {t("Connect Phone", "连接手机")}
               </h2>
-              <span style={{ "font-size": "11px", color: theme.fgSubtle }}>Experimental</span>
+              <span style={{ "font-size": "11px", color: theme.fgSubtle }}>
+                {t("Experimental", "实验功能")}
+              </span>
             </div>
 
             <Show when={starting()}>
               <div style={{ color: theme.fgMuted, "font-size": "13px" }}>
-                Starting server...
+                {t("Starting server...", "正在启动服务...")}
               </div>
             </Show>
 
@@ -232,7 +236,9 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                     WiFi
                   </button>
                   <Show when={!store.remoteAccess.wifiUrl}>
-                    <span style={{ 'font-size': '9px', color: theme.fgSubtle }}>Not detected</span>
+                    <span style={{ 'font-size': '9px', color: theme.fgSubtle }}>
+                      {t('Not detected', '未检测到')}
+                    </span>
                   </Show>
                 </div>
                 <div
@@ -256,7 +262,9 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                     Tailscale
                   </button>
                   <Show when={!store.remoteAccess.tailscaleUrl}>
-                    <span style={{ 'font-size': '9px', color: theme.fgSubtle }}>Not detected</span>
+                    <span style={{ 'font-size': '9px', color: theme.fgSubtle }}>
+                      {t('Not detected', '未检测到')}
+                    </span>
                   </Show>
                 </div>
               </div>
@@ -266,7 +274,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                 {(url) => (
                   <img
                     src={url()}
-                    alt="Connection QR code"
+                    alt={t("Connection QR code", "连接二维码")}
                     style={{ width: '200px', height: '200px', 'border-radius': '8px' }}
                   />
                 )}
@@ -287,24 +295,33 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                 cursor: "pointer",
               }}
                 onClick={handleCopyUrl}
-                title="Click to copy"
+                title={t("Click to copy", "点击复制")}
               >
                 {activeUrl() ?? store.remoteAccess.url}
               </div>
 
               <Show when={copied()}>
-                <span style={{ "font-size": "12px", color: theme.success }}>Copied!</span>
+                <span style={{ "font-size": "12px", color: theme.success }}>
+                  {t("Copied!", "已复制！")}
+                </span>
               </Show>
 
               {/* Instructions */}
               <p style={{ "font-size": "12px", color: theme.fgMuted, "text-align": "center", margin: "0", "line-height": "1.5" }}>
-                Scan the QR code or copy the URL to monitor and interact with your agent terminals from your phone.
+                {t(
+                  "Scan the QR code or copy the URL to monitor and interact with your agent terminals from your phone.",
+                  "扫描二维码或复制链接，即可在手机上查看并操作代理终端。",
+                )}
                 <Show when={mode() === "tailscale"} fallback={
-                  <> Your phone and this computer must be on the same WiFi network.</>
+                  <>{t(" Your phone and this computer must be on the same WiFi network.", " 手机与电脑需在同一 WiFi 网络下。")}</>
                 }>
-                  <> Your phone and this computer must be on the same Tailscale network.</>
+                  <>{t(" Your phone and this computer must be on the same Tailscale network.", " 手机与电脑需在同一 Tailscale 网络下。")}</>
                 </Show>
-                {" "}Access token auto-rotates every 10 minutes without dropping connected sessions. Closing this dialog will keep remote access active until you disconnect.
+                {" "}
+                {t(
+                  "Access token auto-rotates every 10 minutes without dropping connected sessions. Closing this dialog will keep remote access active until you disconnect.",
+                  "访问令牌每 10 分钟自动轮换，不会中断已连接会话。关闭此窗口后，远程访问仍会保持，直到你手动断开。",
+                )}
               </p>
 
               {/* Connected clients */}
@@ -324,7 +341,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                       "border-radius": "50%",
                       background: theme.fgSubtle,
                     }} />
-                    Waiting for connection...
+                    {t("Waiting for connection...", "等待连接中...")}
                   </div>
                 }
               >
@@ -338,7 +355,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                   <span style={{ "font-size": "14px", color: theme.success, "font-weight": "500" }}>
-                    {store.remoteAccess.connectedClients} client(s) connected
+                    {store.remoteAccess.connectedClients}{t(" client(s) connected", " 个客户端已连接")}
                   </span>
                 </div>
               </Show>
@@ -357,7 +374,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                   "font-weight": "400",
                 }}
               >
-                Disconnect
+                {t("Disconnect", "断开连接")}
               </button>
             </Show>
           </div>

@@ -1,6 +1,8 @@
 import { Show, createEffect, type JSX } from 'solid-js';
 import { Dialog } from './Dialog';
 import { theme } from '../lib/theme';
+import { store } from '../store/store';
+import { localize } from '../lib/i18n';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -18,6 +20,7 @@ interface ConfirmDialogProps {
 }
 
 export function ConfirmDialog(props: ConfirmDialogProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   let cancelRef: HTMLButtonElement | undefined;
 
   // Auto-focus the cancel button (or let Dialog's panel get focus)
@@ -75,7 +78,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
             'font-size': '13px',
           }}
         >
-          {props.cancelLabel ?? 'Cancel'}
+          {props.cancelLabel ?? t('Cancel', '取消')}
         </button>
         <button
           type="button"
@@ -100,7 +103,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
           <Show when={props.confirmLoading}>
             <span class="inline-spinner" aria-hidden="true" />
           </Show>
-          {props.confirmLabel ?? 'Confirm'}
+          {props.confirmLabel ?? t('Confirm', '确认')}
         </button>
       </div>
     </Dialog>

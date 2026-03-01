@@ -8,8 +8,11 @@ import {
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { alt, mod } from '../lib/platform';
+import { store } from '../store/core';
+import { localize } from '../lib/i18n';
 
 export function SidebarFooter() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const completedTasksToday = createMemo(() => getCompletedTasksTodayCount());
   const mergedLines = createMemo(() => getMergedLineTotals());
 
@@ -33,7 +36,7 @@ export function SidebarFooter() {
             'letter-spacing': '0.05em',
           }}
         >
-          Progress
+          {t('Progress', '进度')}
         </span>
         <div
           style={{
@@ -48,7 +51,7 @@ export function SidebarFooter() {
             color: theme.fgMuted,
           }}
         >
-          <span>Completed today</span>
+          <span>{t('Completed today', '今日完成')}</span>
           <span
             style={{
               color: theme.fg,
@@ -72,7 +75,7 @@ export function SidebarFooter() {
             color: theme.fgMuted,
           }}
         >
-          <span>Merged to main/master</span>
+          <span>{t('Merged to main/master', '合并到主分支')}</span>
           <span
             style={{
               color: theme.fg,
@@ -120,7 +123,7 @@ export function SidebarFooter() {
             <path d="M3 3L13 13M9 12L12 9" />
             <path d="M13 3L3 13M4 9L7 12" />
           </svg>
-          Arena
+          {t('Arena', '竞技场')}
         </button>
       </div>
 
@@ -153,7 +156,7 @@ export function SidebarFooter() {
             'letter-spacing': '0.05em',
           }}
         >
-          Tips
+          {t('Tips', '提示')}
         </span>
         <span
           style={{
@@ -174,7 +177,7 @@ export function SidebarFooter() {
           >
             {alt} + Arrows
           </kbd>{' '}
-          to navigate panels
+          {t('to navigate panels', '用于切换面板')}
         </span>
         <span
           style={{
@@ -195,7 +198,7 @@ export function SidebarFooter() {
           >
             {mod} + /
           </kbd>{' '}
-          for all shortcuts
+          {t('for all shortcuts', '查看全部快捷键')}
         </span>
       </div>
     </>

@@ -4,6 +4,8 @@ import { IPC } from '../../electron/ipc/channels';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { getStatusColor } from '../lib/status-colors';
+import { store } from '../store/store';
+import { localize } from '../lib/i18n';
 import type { ChangedFile } from '../ipc/types';
 
 interface ChangedFilesListProps {
@@ -18,6 +20,7 @@ interface ChangedFilesListProps {
 }
 
 export function ChangedFilesList(props: ChangedFilesListProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [files, setFiles] = createSignal<ChangedFile[]>([]);
   const [selectedIndex, setSelectedIndex] = createSignal(-1);
 
@@ -179,11 +182,13 @@ export function ChangedFilesList(props: ChangedFilesListProps) {
             'flex-shrink': '0',
           }}
         >
-          {files().length} files, <span style={{ color: theme.success }}>+{totalAdded()}</span>{' '}
+          {files().length} {t('files', '个文件')}, <span style={{ color: theme.success }}>+{totalAdded()}</span>{' '}
           <span style={{ color: theme.error }}>-{totalRemoved()}</span>
           <Show when={uncommittedCount() > 0 && uncommittedCount() < files().length}>
             {' '}
-            <span style={{ color: theme.warning }}>({uncommittedCount()} uncommitted)</span>
+            <span style={{ color: theme.warning }}>
+              ({uncommittedCount()} {t('uncommitted', '未提交')})
+            </span>
           </Show>
         </div>
       </Show>

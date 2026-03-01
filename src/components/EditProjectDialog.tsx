@@ -1,8 +1,9 @@
 import { createSignal, createEffect, For, Show } from 'solid-js';
 import { Dialog } from './Dialog';
-import { updateProject, PASTEL_HUES } from '../store/store';
+import { store, updateProject, PASTEL_HUES } from '../store/store';
 import { sanitizeBranchPrefix, toBranchName } from '../lib/branch-name';
 import { theme } from '../lib/theme';
+import { localize } from '../lib/i18n';
 import type { Project, TerminalBookmark } from '../store/types';
 
 interface EditProjectDialogProps {
@@ -16,6 +17,7 @@ function hueFromColor(color: string): number {
 }
 
 export function EditProjectDialog(props: EditProjectDialogProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [name, setName] = createSignal('');
   const [selectedHue, setSelectedHue] = createSignal(0);
   const [branchPrefix, setBranchPrefix] = createSignal('task');
@@ -89,7 +91,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 'font-weight': '600',
               }}
             >
-              Edit Project
+              {t('Edit Project', '编辑项目')}
             </h2>
 
             {/* Path (read-only) */}
@@ -113,7 +115,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                Name
+                {t('Name', '名称')}
               </label>
               <input
                 ref={nameRef}
@@ -146,7 +148,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                Branch prefix
+                {t('Branch prefix', '分支前缀')}
               </label>
               <input
                 class="input-field"
@@ -156,7 +158,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && canSave()) handleSave();
                 }}
-                placeholder="task"
+                placeholder={t('task', 'task')}
                 style={{
                   background: theme.bgInput,
                   border: `1px solid ${theme.border}`,
@@ -204,7 +206,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                Color
+                {t('Color', '颜色')}
               </label>
               <div style={{ display: 'flex', gap: '8px', 'flex-wrap': 'wrap' }}>
                 <For each={PASTEL_HUES}>
@@ -227,7 +229,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                           padding: '0',
                           'flex-shrink': '0',
                         }}
-                        title={`Hue ${hue}`}
+                        title={t(`Hue ${hue}`, `色相 ${hue}`)}
                       />
                     );
                   }}
@@ -252,7 +254,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 onChange={(e) => setDeleteBranchOnClose(e.currentTarget.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              Always delete branch and worklog on merge
+              {t('Always delete branch and worklog on merge', '合并后始终删除分支与工作目录')}
             </label>
 
             {/* Default direct mode preference */}
@@ -272,7 +274,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 onChange={(e) => setDefaultDirectMode(e.currentTarget.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              Default to working directly on main branch
+              {t('Default to working directly on main branch', '默认直接在主分支工作')}
             </label>
 
             {/* Command Bookmarks */}
@@ -285,7 +287,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                Command Bookmarks
+                {t('Command Bookmarks', '命令书签')}
               </label>
               <Show when={bookmarks().length > 0}>
                 <div style={{ display: 'flex', 'flex-direction': 'column', gap: '4px' }}>
@@ -327,7 +329,8 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                             'line-height': '1',
                             'flex-shrink': '0',
                           }}
-                          title="Remove bookmark"
+                          title={t('Remove bookmark', '删除书签')}
+                          aria-label={t('Remove bookmark', '删除书签')}
                         >
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                             <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
@@ -350,7 +353,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                       addBookmark();
                     }
                   }}
-                  placeholder="e.g. npm run dev"
+                  placeholder={t('e.g. npm run dev', '例如：npm run dev')}
                   style={{
                     flex: '1',
                     background: theme.bgInput,
@@ -378,7 +381,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                     'flex-shrink': '0',
                   }}
                 >
-                  Add
+                  {t('Add', '添加')}
                 </button>
               </div>
             </div>
@@ -406,7 +409,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'font-size': '13px',
                 }}
               >
-                Cancel
+                {t('Cancel', '取消')}
               </button>
               <button
                 type="button"
@@ -425,7 +428,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   opacity: canSave() ? '1' : '0.4',
                 }}
               >
-                Save
+                {t('Save', '保存')}
               </button>
             </div>
           </>

@@ -41,6 +41,7 @@ import { sf } from '../lib/fontScale';
 import { mod } from '../lib/platform';
 import { extractLabel, consumePendingShellCommand } from '../lib/bookmarks';
 import { handleDragReorder } from '../lib/dragReorder';
+import { localize } from '../lib/i18n';
 import type { Task } from '../store/types';
 import type { ChangedFile } from '../ipc/types';
 
@@ -50,6 +51,7 @@ interface TaskPanelProps {
 }
 
 export function TaskPanel(props: TaskPanelProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [showCloseConfirm, setShowCloseConfirm] = createSignal(false);
   const [showMergeConfirm, setShowMergeConfirm] = createSignal(false);
   const [showPushConfirm, setShowPushConfirm] = createSignal(false);
@@ -226,7 +228,7 @@ export function TaskPanel(props: TaskPanelProps) {
                   </svg>
                 }
                 onClick={openMergeConfirm}
-                title="Merge into main"
+                title={t('Merge into main', '合并到主分支')}
               />
               <div style={{ position: 'relative', display: 'inline-flex' }}>
                 <Show
@@ -256,7 +258,7 @@ export function TaskPanel(props: TaskPanelProps) {
                       </svg>
                     }
                     onClick={() => setShowPushConfirm(true)}
-                    title="Push to remote"
+                    title={t('Push to remote', '推送到远程')}
                   />
                 </Show>
                 <Show when={pushSuccess()}>
@@ -289,7 +291,7 @@ export function TaskPanel(props: TaskPanelProps) {
                 </svg>
               }
               onClick={() => setShowCloseConfirm(true)}
-              title="Close task"
+              title={t('Close task', '关闭任务')}
             />
           </div>
         </div>
@@ -318,7 +320,7 @@ export function TaskPanel(props: TaskPanelProps) {
                       e.stopPropagation();
                       setEditingProjectId(p().id);
                     }}
-                    title="Project settings"
+                    title={t('Project settings', '项目设置')}
                     style={{
                       display: 'inline-flex',
                       'align-items': 'center',
@@ -462,7 +464,7 @@ export function TaskPanel(props: TaskPanelProps) {
                       ref={notesRef}
                       value={props.task.notes}
                       onInput={(e) => updateTaskNotes(props.task.id, e.currentTarget.value)}
-                      placeholder="Notes..."
+                      placeholder={t('Notes...', '备注...')}
                       style={{
                         width: '100%',
                         height: '100%',
@@ -507,7 +509,7 @@ export function TaskPanel(props: TaskPanelProps) {
                         'flex-shrink': '0',
                       }}
                     >
-                      Changed Files
+                      {t('Changed Files', '变更文件')}
                     </div>
                     <div style={{ flex: '1', overflow: 'hidden' }}>
                       <ChangedFilesList
@@ -590,7 +592,7 @@ export function TaskPanel(props: TaskPanelProps) {
                   spawnShellForTask(props.task.id);
                 }}
                 tabIndex={-1}
-                title={`Open terminal (${mod}+Shift+T)`}
+                title={t(`Open terminal (${mod}+Shift+T)`, `打开终端 (${mod}+Shift+T)`)}
                 style={{
                   background: theme.taskPanelBg,
                   border: `1px solid ${shellToolbarIdx() === 0 && shellToolbarFocused() ? theme.accent : theme.border}`,
@@ -606,7 +608,7 @@ export function TaskPanel(props: TaskPanelProps) {
                 }}
               >
                 <span style={{ 'font-family': 'monospace', 'font-size': sf(13) }}>&gt;_</span>
-                <span>Terminal</span>
+                <span>{t('Terminal', '终端')}</span>
               </button>
               <For each={projectBookmarks()}>
                 {(bookmark, i) => (
@@ -686,7 +688,7 @@ export function TaskPanel(props: TaskPanelProps) {
                             e.stopPropagation();
                             closeShell(props.task.id, shellId);
                           }}
-                          title="Close terminal (Ctrl+Shift+Q)"
+                          title={t('Close terminal (Ctrl+Shift+Q)', '关闭终端 (Ctrl+Shift+Q)')}
                           style={{
                             background: 'color-mix(in srgb, var(--island-bg) 85%, transparent)',
                             border: `1px solid ${theme.border}`,
@@ -719,7 +721,7 @@ export function TaskPanel(props: TaskPanelProps) {
                               border: `1px solid ${theme.border}`,
                             }}
                           >
-                            Process exited ({shellExits[shellId]?.exitCode ?? '?'})
+                            {t('Process exited', '进程已退出')} ({shellExits[shellId]?.exitCode ?? '?'})
                           </div>
                         </Show>
                         <TerminalView
@@ -780,7 +782,9 @@ export function TaskPanel(props: TaskPanelProps) {
             <InfoBar
               title={
                 props.task.lastPrompt ||
-                (props.task.initialPrompt ? 'Waiting to send prompt…' : 'No prompts sent yet')
+                (props.task.initialPrompt
+                  ? t('Waiting to send prompt…', '等待发送提示词…')
+                  : t('No prompts sent yet', '尚未发送提示词'))
               }
               onDblClick={() => {
                 if (props.task.lastPrompt && promptHandle && !promptHandle.getText())
@@ -791,8 +795,8 @@ export function TaskPanel(props: TaskPanelProps) {
                 {props.task.lastPrompt
                   ? `> ${props.task.lastPrompt}`
                   : props.task.initialPrompt
-                    ? '⏳ Waiting to send prompt…'
-                    : 'No prompts sent'}
+                    ? `⏳ ${t('Waiting to send prompt…', '等待发送提示词…')}`
+                    : t('No prompts sent', '未发送提示词')}
               </span>
             </InfoBar>
             <div style={{ flex: '1', position: 'relative', overflow: 'hidden' }}>
@@ -821,8 +825,8 @@ export function TaskPanel(props: TaskPanelProps) {
                       >
                         <span>
                           {a().signal === 'spawn_failed'
-                            ? 'Failed to start'
-                            : `Process exited (${a().exitCode ?? '?'})`}
+                            ? t('Failed to start', '启动失败')
+                            : `${t('Process exited', '进程已退出')} (${a().exitCode ?? '?'})`}
                         </span>
                         <button
                           onClick={(e) => {
@@ -838,9 +842,9 @@ export function TaskPanel(props: TaskPanelProps) {
                             cursor: 'pointer',
                             'font-size': sf(10),
                           }}
-                        >
-                          Restart
-                        </button>
+                          >
+                            {t('Restart', '重启')}
+                          </button>
                         <Show when={a().def.resume_args?.length}>
                           <button
                             onClick={(e) => {
@@ -857,7 +861,7 @@ export function TaskPanel(props: TaskPanelProps) {
                               'font-size': sf(10),
                             }}
                           >
-                            Resume
+                            {t('Resume', '恢复')}
                           </button>
                         </Show>
                       </div>
@@ -962,11 +966,13 @@ export function TaskPanel(props: TaskPanelProps) {
           }}
         >
           <Show when={props.task.closingStatus === 'closing'}>
-            <div style={{ 'font-size': '13px', color: theme.fgMuted }}>Closing task...</div>
+            <div style={{ 'font-size': '13px', color: theme.fgMuted }}>
+              {t('Closing task...', '正在关闭任务...')}
+            </div>
           </Show>
           <Show when={props.task.closingStatus === 'error'}>
             <div style={{ 'font-size': '13px', color: theme.error, 'font-weight': '600' }}>
-              Close failed
+              {t('Close failed', '关闭失败')}
             </div>
             <div
               style={{
@@ -993,9 +999,9 @@ export function TaskPanel(props: TaskPanelProps) {
                 cursor: 'pointer',
                 'font-size': '12px',
               }}
-            >
-              Retry
-            </button>
+              >
+                {t('Retry', '重试')}
+              </button>
           </Show>
         </div>
       </Show>

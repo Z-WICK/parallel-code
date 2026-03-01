@@ -10,6 +10,7 @@ import {
   agents,
   status,
 } from './ws';
+import { getPreferredLocale, localize } from '../lib/i18n';
 
 // Base64 decode (same approach as desktop)
 const B64 = new Uint8Array(128);
@@ -51,6 +52,8 @@ interface AgentDetailProps {
 }
 
 export function AgentDetail(props: AgentDetailProps) {
+  const locale = getPreferredLocale();
+  const t = (english: string, chinese: string) => localize(locale, english, chinese);
   let termContainer: HTMLDivElement | undefined;
   let inputRef: HTMLInputElement | undefined;
   let term: Terminal | undefined;
@@ -245,7 +248,7 @@ export function AgentDetail(props: AgentDetailProps) {
             'touch-action': 'manipulation',
           }}
         >
-          &#8592; Back
+          &#8592; {t('Back', '返回')}
         </button>
         <span
           style={{
@@ -282,7 +285,9 @@ export function AgentDetail(props: AgentDetailProps) {
             'flex-shrink': '0',
           }}
         >
-          {status() === 'connecting' ? 'Reconnecting...' : 'Disconnected — check your network'}
+          {status() === 'connecting'
+            ? t('Reconnecting...', '重新连接中...')
+            : t('Disconnected — check your network', '连接断开，请检查网络')}
         </div>
       </Show>
 
@@ -368,7 +373,7 @@ export function AgentDetail(props: AgentDetailProps) {
               }
               setInputText(val);
             }}
-            placeholder="Type command..."
+            placeholder={t('Type command...', '输入命令...')}
             style={{
               flex: '1',
               background: '#10161d',
@@ -402,7 +407,7 @@ export function AgentDetail(props: AgentDetailProps) {
               'touch-action': 'manipulation',
               transition: 'background 0.15s, color 0.15s',
             }}
-            title="Send"
+            title={t('Send', '发送')}
           >
             <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
               <path
@@ -419,7 +424,7 @@ export function AgentDetail(props: AgentDetailProps) {
         <div style={{ display: 'flex', gap: '6px', 'flex-wrap': 'wrap' }}>
           <For
             each={[
-              { label: 'Enter', data: () => key(13) },
+              { label: t('Enter', '回车'), data: () => key(13) },
               { label: '\u2191', data: () => key(27) + '[A' },
               { label: '\u2193', data: () => key(27) + '[B' },
               { label: 'Ctrl+C', data: () => key(3) },
@@ -469,7 +474,7 @@ export function AgentDetail(props: AgentDetailProps) {
                 'touch-action': 'manipulation',
                 transition: 'background 0.16s ease',
               }}
-              title="Decrease font size"
+              title={t('Decrease font size', '减小字体')}
             >
               A-
             </button>
@@ -496,7 +501,7 @@ export function AgentDetail(props: AgentDetailProps) {
                 'touch-action': 'manipulation',
                 transition: 'background 0.16s ease',
               }}
-              title="Increase font size"
+              title={t('Increase font size', '增大字体')}
             >
               A+
             </button>

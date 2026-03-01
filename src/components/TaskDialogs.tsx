@@ -7,6 +7,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { ChangedFilesList } from './ChangedFilesList';
 import { DiffViewerDialog } from './DiffViewerDialog';
 import { theme } from '../lib/theme';
+import { localize } from '../lib/i18n';
 import type { Task } from '../store/types';
 import type { ChangedFile, MergeStatus, WorktreeStatus } from '../ipc/types';
 
@@ -26,6 +27,7 @@ interface TaskDialogsProps {
 }
 
 export function TaskDialogs(props: TaskDialogsProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   // --- Merge state ---
   const [mergeError, setMergeError] = createSignal('');
   const [merging, setMerging] = createSignal(false);
@@ -79,13 +81,15 @@ export function TaskDialogs(props: TaskDialogsProps) {
       {/* Close Task Dialog */}
       <ConfirmDialog
         open={props.showCloseConfirm}
-        title="Close Task"
+        title={t('Close Task', '关闭任务')}
         message={
           <div>
             <Show when={props.task.directMode}>
               <p style={{ margin: '0' }}>
-                This will stop all running agents and shells for this task. No git operations will
-                be performed.
+                {t(
+                  'This will stop all running agents and shells for this task. No git operations will be performed.',
+                  '这会停止该任务下所有运行中的代理和终端，不会执行任何 Git 操作。',
+                )}
               </p>
             </Show>
             <Show when={!props.task.directMode}>
@@ -115,7 +119,10 @@ export function TaskDialogs(props: TaskDialogsProps) {
                         'font-weight': '600',
                       }}
                     >
-                      Warning: There are uncommitted changes that will be permanently lost.
+                      {t(
+                        'Warning: There are uncommitted changes that will be permanently lost.',
+                        '警告：存在未提交修改，关闭后将永久丢失。',
+                      )}
                     </div>
                   </Show>
                   <Show when={worktreeStatus()?.has_committed_changes}>
@@ -130,7 +137,10 @@ export function TaskDialogs(props: TaskDialogsProps) {
                         'font-weight': '600',
                       }}
                     >
-                      Warning: This branch has commits that have not been merged into main.
+                      {t(
+                        'Warning: This branch has commits that have not been merged into main.',
+                        '警告：该分支包含尚未合并到主分支的提交。',
+                      )}
                     </div>
                   </Show>
                 </div>
@@ -142,8 +152,14 @@ export function TaskDialogs(props: TaskDialogsProps) {
                   <>
                     <p style={{ margin: '0 0 8px' }}>
                       {willDeleteBranch
-                        ? 'This action cannot be undone. The following will be permanently deleted:'
-                        : 'The worktree will be removed but the branch will be kept:'}
+                        ? t(
+                            'This action cannot be undone. The following will be permanently deleted:',
+                            '该操作不可撤销。以下内容将被永久删除：',
+                          )
+                        : t(
+                            'The worktree will be removed but the branch will be kept:',
+                            '将删除 worktree，但保留分支：',
+                          )}
                     </p>
                     <ul
                       style={{
@@ -156,15 +172,16 @@ export function TaskDialogs(props: TaskDialogsProps) {
                     >
                       <Show when={willDeleteBranch}>
                         <li>
-                          Local feature branch <strong>{props.task.branchName}</strong>
+                          {t('Local feature branch', '本地功能分支')} <strong>{props.task.branchName}</strong>
                         </li>
                       </Show>
                       <li>
-                        Worktree at <strong>{props.task.worktreePath}</strong>
+                        {t('Worktree at', 'Worktree 路径')} <strong>{props.task.worktreePath}</strong>
                       </li>
                       <Show when={!willDeleteBranch}>
                         <li style={{ color: theme.fgMuted }}>
-                          Branch <strong>{props.task.branchName}</strong> will be kept
+                          {t('Branch', '分支')} <strong>{props.task.branchName}</strong>{' '}
+                          {t('will be kept', '将被保留')}
                         </li>
                       </Show>
                     </ul>
@@ -174,7 +191,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
             </Show>
           </div>
         }
-        confirmLabel={props.task.directMode ? 'Close' : 'Delete'}
+        confirmLabel={props.task.directMode ? t('Close', '关闭') : t('Delete', '删除')}
         danger={!props.task.directMode}
         onConfirm={() => {
           props.onCloseConfirmDone();
@@ -186,7 +203,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
       {/* Merge Dialog */}
       <ConfirmDialog
         open={props.showMergeConfirm}
-        title="Merge into Main"
+        title={t('Merge into Main', '合并到主分支')}
         width="520px"
         autoFocusCancel
         message={
@@ -204,7 +221,10 @@ export function TaskDialogs(props: TaskDialogsProps) {
                   'font-weight': '600',
                 }}
               >
-                Warning: You have uncommitted changes that will NOT be included in this merge.
+                {t(
+                  'Warning: You have uncommitted changes that will NOT be included in this merge.',
+                  '警告：你有未提交修改，这些修改不会被包含到本次合并中。',
+                )}
               </div>
             </Show>
             <Show when={!worktreeStatus.loading && !hasCommittedChangesToMerge()}>
@@ -220,7 +240,10 @@ export function TaskDialogs(props: TaskDialogsProps) {
                   'font-weight': '600',
                 }}
               >
-                Nothing to merge: this branch has no committed changes compared to main/master.
+                {t(
+                  'Nothing to merge: this branch has no committed changes compared to main/master.',
+                  '没有可合并内容：该分支相对主分支没有已提交的变更。',
+                )}
               </div>
             </Show>
             <Show when={mergeStatus.loading}>
@@ -235,7 +258,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
                   border: `1px solid ${theme.border}`,
                 }}
               >
-                Checking for conflicts with main...
+                {t('Checking for conflicts with main...', '正在检查与主分支的冲突...')}
               </div>
             </Show>
             <Show when={!mergeStatus.loading && mergeStatus()}>
@@ -258,13 +281,21 @@ export function TaskDialogs(props: TaskDialogsProps) {
                     }}
                   >
                     <Show when={!hasConflicts()}>
-                      Main has {status().main_ahead_count} new commit
-                      {status().main_ahead_count > 1 ? 's' : ''}. Rebase onto main first.
+                      {t(
+                        `Main has ${status().main_ahead_count} new commit${
+                          status().main_ahead_count > 1 ? 's' : ''
+                        }. Rebase onto main first.`,
+                        `主分支有 ${status().main_ahead_count} 个新提交。请先 rebase 到主分支。`,
+                      )}
                     </Show>
                     <Show when={hasConflicts()}>
                       <div>
-                        Conflicts detected with main ({status().conflicting_files.length} file
-                        {status().conflicting_files.length > 1 ? 's' : ''}):
+                        {t(
+                          `Conflicts detected with main (${status().conflicting_files.length} file${
+                            status().conflicting_files.length > 1 ? 's' : ''
+                          }):`,
+                          `检测到与主分支冲突（${status().conflicting_files.length} 个文件）：`,
+                        )}
                       </div>
                       <ul
                         style={{ margin: '4px 0 0', 'padding-left': '20px', 'font-weight': '400' }}
@@ -272,7 +303,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
                         <For each={status().conflicting_files}>{(f) => <li>{f}</li>}</For>
                       </ul>
                       <div style={{ 'margin-top': '4px', 'font-weight': '400' }}>
-                        Rebase onto main to resolve conflicts.
+                        {t('Rebase onto main to resolve conflicts.', '请先 rebase 到主分支以解决冲突。')}
                       </div>
                     </Show>
                   </div>
@@ -303,8 +334,8 @@ export function TaskDialogs(props: TaskDialogsProps) {
                       }}
                       title={
                         worktreeStatus()?.has_uncommitted_changes
-                          ? 'Commit or stash changes before rebasing'
-                          : 'Rebase onto main'
+                          ? t('Commit or stash changes before rebasing', 'rebase 前请先提交或暂存修改')
+                          : t('Rebase onto main', 'rebase 到主分支')
                       }
                       style={{
                         padding: '6px 14px',
@@ -321,7 +352,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
                           rebasing() || worktreeStatus()?.has_uncommitted_changes ? '0.5' : '1',
                       }}
                     >
-                      {rebasing() ? 'Rebasing...' : 'Rebase onto main'}
+                      {rebasing() ? t('Rebasing...', 'Rebase 中...') : t('Rebase onto main', 'Rebase 到主分支')}
                     </button>
                     <Show
                       when={
@@ -340,7 +371,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
                             },
                           );
                         }}
-                        title="Close dialog and ask the AI agent to rebase"
+                        title={t('Close dialog and ask the AI agent to rebase', '关闭弹窗并请求 AI 执行 rebase')}
                         style={{
                           padding: '6px 14px',
                           background: theme.accent,
@@ -352,12 +383,12 @@ export function TaskDialogs(props: TaskDialogsProps) {
                           'font-weight': '600',
                         }}
                       >
-                        Rebase with AI
+                        {t('Rebase with AI', '让 AI 执行 Rebase')}
                       </button>
                     </Show>
                     <Show when={rebaseSuccess()}>
                       <span style={{ 'font-size': '12px', color: theme.success }}>
-                        Rebase successful
+                        {t('Rebase successful', 'Rebase 成功')}
                       </span>
                     </Show>
                     <Show when={rebaseError()}>
@@ -370,7 +401,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
               )}
             </Show>
             <p style={{ margin: '0 0 12px' }}>
-              Merge <strong>{props.task.branchName}</strong> into main:
+              {t('Merge', '合并')} <strong>{props.task.branchName}</strong> {t('into main:', '到主分支：')}
             </p>
             <Show when={!branchLog.loading && branchLog()}>
               {(log) => {
@@ -471,7 +502,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
                 onChange={(e) => setCleanupAfterMerge(e.currentTarget.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              Delete branch and worktree after merge
+              {t('Delete branch and worktree after merge', '合并后删除分支和 worktree')}
             </label>
             <label
               style={{
@@ -496,13 +527,13 @@ export function TaskDialogs(props: TaskDialogsProps) {
                 }}
                 style={{ cursor: 'pointer' }}
               />
-              Squash commits
+              {t('Squash commits', '压缩提交（Squash）')}
             </label>
             <Show when={squash()}>
               <textarea
                 value={squashMessage()}
                 onInput={(e) => setSquashMessage(e.currentTarget.value)}
-                placeholder="Commit message..."
+                placeholder={t('Commit message...', '提交说明...')}
                 rows={6}
                 style={{
                   'margin-top': '8px',
@@ -539,7 +570,9 @@ export function TaskDialogs(props: TaskDialogsProps) {
         }
         confirmDisabled={merging() || hasConflicts() || !hasCommittedChangesToMerge()}
         confirmLoading={merging()}
-        confirmLabel={merging() ? 'Merging...' : squash() ? 'Squash Merge' : 'Merge'}
+        confirmLabel={
+          merging() ? t('Merging...', '合并中...') : squash() ? t('Squash Merge', '压缩合并') : t('Merge', '合并')
+        }
         onConfirm={() => {
           const taskId = props.task.id;
           const onDone = props.onMergeConfirmDone;
@@ -574,11 +607,12 @@ export function TaskDialogs(props: TaskDialogsProps) {
       {/* Push Dialog */}
       <ConfirmDialog
         open={props.showPushConfirm}
-        title="Push to Remote"
+        title={t('Push to Remote', '推送到远程')}
         message={
           <div>
             <p style={{ margin: '0 0 8px' }}>
-              Push branch <strong>{props.task.branchName}</strong> to remote?
+              {t('Push branch', '将分支')} <strong>{props.task.branchName}</strong>{' '}
+              {t('to remote?', '推送到远程？')}
             </p>
             <Show when={pushError()}>
               <div
@@ -597,7 +631,7 @@ export function TaskDialogs(props: TaskDialogsProps) {
             </Show>
           </div>
         }
-        confirmLabel={pushing() ? 'Pushing...' : 'Push'}
+        confirmLabel={pushing() ? t('Pushing...', '推送中...') : t('Push', '推送')}
         onConfirm={() => {
           const taskId = props.task.id;
           const onStart = props.onPushStart;

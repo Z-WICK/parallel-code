@@ -8,6 +8,8 @@ import { theme } from '../lib/theme';
 import { isBinaryDiff } from '../lib/diff-parser';
 import { getStatusColor } from '../lib/status-colors';
 import { openFileInEditor } from '../lib/shell';
+import { store } from '../store/store';
+import { localize } from '../lib/i18n';
 import type { ChangedFile } from '../ipc/types';
 
 interface DiffViewerDialogProps {
@@ -20,12 +22,17 @@ interface DiffViewerDialogProps {
   branchName?: string | null;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  M: 'Modified',
-  A: 'Added',
-  D: 'Deleted',
-  '?': 'Untracked',
-};
+function getStatusLabel(status: string, locale: 'en' | 'zh-CN'): string {
+  const t = (english: string, chinese: string) => localize(locale, english, chinese);
+  return (
+    {
+      M: t('Modified', '已修改'),
+      A: t('Added', '已新增'),
+      D: t('Deleted', '已删除'),
+      '?': t('Untracked', '未跟踪'),
+    }[status] ?? status
+  );
+}
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
@@ -72,6 +79,7 @@ function detectLang(filePath: string): string {
 }
 
 export function DiffViewerDialog(props: DiffViewerDialogProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [rawDiff, setRawDiff] = createSignal('');
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal('');
@@ -155,7 +163,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                   background: 'rgba(255,255,255,0.06)',
                 }}
               >
-                {STATUS_LABELS[file().status] ?? file().status}
+                {getStatusLabel(file().status, store.locale)}
               </span>
               <span
                 style={{
@@ -195,7 +203,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                     'font-family': 'inherit',
                   }}
                 >
-                  Split
+                  {t('Split', '分栏')}
                 </button>
                 <button
                   onClick={() => setViewMode(DiffModeEnum.Unified)}
@@ -213,7 +221,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                     'font-family': 'inherit',
                   }}
                 >
-                  Unified
+                  {t('Unified', '统一')}
                 </button>
               </div>
 
@@ -231,7 +239,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                   'align-items': 'center',
                   'border-radius': '4px',
                 }}
-                title="Open in editor"
+                title={t('Open in editor', '在编辑器中打开')}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.5 2a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-3a.75.75 0 0 1 1.5 0v3A3 3 0 0 1 12.5 16h-9A3 3 0 0 1 0 12.5v-9A3 3 0 0 1 3.5 0h3a.75.75 0 0 1 0 1.5h-3ZM10 .75a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V2.56L8.53 8.53a.75.75 0 0 1-1.06-1.06L13.44 1.5H10.75A.75.75 0 0 1 10 .75Z" />
@@ -250,7 +258,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                   'align-items': 'center',
                   'border-radius': '4px',
                 }}
-                title="Close"
+                title={t('Close', '关闭')}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
@@ -267,7 +275,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
             >
               <Show when={loading()}>
                 <div style={{ padding: '40px', 'text-align': 'center', color: theme.fgMuted }}>
-                  Loading diff...
+                  {t('Loading diff...', '正在加载 Diff...')}
                 </div>
               </Show>
 
@@ -279,13 +287,13 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
 
               <Show when={binary()}>
                 <div style={{ padding: '40px', 'text-align': 'center', color: theme.fgMuted }}>
-                  Binary file — cannot display diff
+                  {t('Binary file — cannot display diff', '二进制文件，无法显示 Diff')}
                 </div>
               </Show>
 
               <Show when={!loading() && !error() && !binary() && !rawDiff()}>
                 <div style={{ padding: '40px', 'text-align': 'center', color: theme.fgMuted }}>
-                  No changes
+                  {t('No changes', '无变更')}
                 </div>
               </Show>
 

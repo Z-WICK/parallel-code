@@ -1,5 +1,7 @@
 import { For } from 'solid-js';
 import { theme } from '../lib/theme';
+import { store } from '../store/store';
+import { localize } from '../lib/i18n';
 
 interface SymlinkDirPickerProps {
   dirs: string[];
@@ -8,6 +10,7 @@ interface SymlinkDirPickerProps {
 }
 
 export function SymlinkDirPicker(props: SymlinkDirPickerProps) {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   return (
     <div
       data-nav-field="symlink-dirs"
@@ -21,7 +24,7 @@ export function SymlinkDirPicker(props: SymlinkDirPickerProps) {
           'letter-spacing': '0.05em',
         }}
       >
-        Symlink into worktree
+        {t('Symlink into worktree', '软链接到 worktree')}
       </label>
       <div
         style={{

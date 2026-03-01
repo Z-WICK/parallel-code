@@ -3,8 +3,11 @@ import { initAuth, getRefreshToken, refreshAuthToken } from './auth';
 import { connect } from './ws';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
+import { getPreferredLocale, localize } from '../lib/i18n';
 
 export function App() {
+  const locale = getPreferredLocale();
+  const t = (english: string, chinese: string) => localize(locale, english, chinese);
   const [authed, setAuthed] = createSignal(false);
   // Separate view state from detail data so the agentId/taskName signals
   // never become empty while AgentDetail is still mounted (avoids reactive
@@ -55,9 +58,12 @@ export function App() {
           }}
         >
           <div>
-            <p style={{ 'margin-bottom': '12px' }}>Not authenticated.</p>
+            <p style={{ 'margin-bottom': '12px' }}>{t('Not authenticated.', '未通过认证。')}</p>
             <p style={{ 'font-size': '13px', color: '#666' }}>
-              Scan the QR code from the Parallel Code desktop app to connect.
+              {t(
+                'Scan the QR code from the Parallel Code desktop app to connect.',
+                '请扫描 Parallel Code 桌面端的二维码进行连接。',
+              )}
             </p>
           </div>
         </div>

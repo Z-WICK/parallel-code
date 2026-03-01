@@ -1,6 +1,7 @@
 import type { AgentDef, WorktreeStatus } from '../ipc/types';
 import type { TerminalFont } from '../lib/fonts';
 import type { LookPreset } from '../lib/look';
+import type { AppLocale } from '../lib/i18n';
 
 export interface TerminalBookmark {
   id: string;
@@ -108,6 +109,7 @@ export interface PersistedState {
   autoTrustFolders?: boolean;
   inactiveColumnOpacity?: number;
   customAgents?: AgentDef[];
+  locale?: AppLocale;
 }
 
 // Panel cell IDs. Shell terminals use "shell:0", "shell:1", etc.
@@ -164,6 +166,7 @@ export interface AppStore {
   mergedLinesRemoved: number;
   terminalFont: TerminalFont;
   themePreset: LookPreset;
+  locale: AppLocale;
   windowState: PersistedWindowState | null;
   autoTrustFolders: boolean;
   inactiveColumnOpacity: number;

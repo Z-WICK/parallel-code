@@ -8,8 +8,10 @@ import { NewTaskPlaceholder } from './NewTaskPlaceholder';
 import { theme } from '../lib/theme';
 import { mod } from '../lib/platform';
 import { createCtrlShiftWheelResizeHandler } from '../lib/wheelZoom';
+import { localize } from '../lib/i18n';
 
 export function TilingLayout() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   let containerRef: HTMLDivElement | undefined;
   let panelHandle: ResizablePanelHandle | undefined;
 
@@ -85,7 +87,9 @@ export function TilingLayout() {
                         'font-size': '13px',
                       }}
                     >
-                      <div style={{ color: theme.error, 'font-weight': '600' }}>Panel crashed</div>
+                      <div style={{ color: theme.error, 'font-weight': '600' }}>
+                        {t('Panel crashed', '面板崩溃')}
+                      </div>
                       <div
                         style={{
                           'text-align': 'center',
@@ -107,15 +111,21 @@ export function TilingLayout() {
                             cursor: 'pointer',
                           }}
                         >
-                          Retry
+                          {t('Retry', '重试')}
                         </button>
                         <button
                           onClick={() => {
                             const task = store.tasks[panelId];
                             if (task) {
                               const msg = task.directMode
-                                ? 'Close this task? Running agents and shells will be stopped.'
-                                : 'Close this task? The worktree and branch will be deleted.';
+                                ? t(
+                                    'Close this task? Running agents and shells will be stopped.',
+                                    '关闭该任务？运行中的代理和终端将被停止。',
+                                  )
+                                : t(
+                                    'Close this task? The worktree and branch will be deleted.',
+                                    '关闭该任务？对应的 worktree 与分支将被删除。',
+                                  );
                               if (window.confirm(msg)) closeTask(panelId);
                             } else if (store.terminals[panelId]) {
                               closeTerminal(panelId);
@@ -130,7 +140,7 @@ export function TilingLayout() {
                             cursor: 'pointer',
                           }}
                         >
-                          {store.tasks[panelId] ? 'Close Task' : 'Close Terminal'}
+                          {store.tasks[panelId] ? t('Close Task', '关闭任务') : t('Close Terminal', '关闭终端')}
                         </button>
                       </div>
                     </div>
@@ -234,10 +244,10 @@ export function TilingLayout() {
                         'margin-bottom': '6px',
                       }}
                     >
-                      Link your first project to get started
+                      {t('Link your first project to get started', '先关联你的第一个项目即可开始')}
                     </div>
                     <div style={{ 'font-size': '12px', color: theme.fgSubtle }}>
-                      A project is a local folder with your code
+                      {t('A project is a local folder with your code', '项目就是包含你代码的本地文件夹')}
                     </div>
                   </div>
                   <button
@@ -265,7 +275,7 @@ export function TilingLayout() {
                     >
                       <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.22.78 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2A1.75 1.75 0 0 0 5 1H1.75Z" />
                     </svg>
-                    Link Project
+                    {t('Link Project', '关联项目')}
                   </button>
                 </>
               }
@@ -295,10 +305,10 @@ export function TilingLayout() {
                     'margin-bottom': '6px',
                   }}
                 >
-                  No tasks yet
+                  {t('No tasks yet', '还没有任务')}
                 </div>
                 <div style={{ 'font-size': '12px', color: theme.fgSubtle }}>
-                  Press{' '}
+                  {t('Press', '按下')}{' '}
                   <kbd
                     style={{
                       background: theme.bgElevated,
@@ -311,7 +321,7 @@ export function TilingLayout() {
                   >
                     {mod}+N
                   </kbd>{' '}
-                  to create a new task
+                  {t('to create a new task', '创建新任务')}
                 </div>
               </div>
             </Show>

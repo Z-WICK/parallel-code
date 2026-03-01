@@ -30,6 +30,7 @@ import { StatusDot } from './StatusDot';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { mod } from '../lib/platform';
+import { localize } from '../lib/i18n';
 
 const DRAG_THRESHOLD = 5;
 const SIDEBAR_DEFAULT_WIDTH = 240;
@@ -38,6 +39,7 @@ const SIDEBAR_MAX_WIDTH = 480;
 const SIDEBAR_SIZE_KEY = 'sidebar:width';
 
 export function Sidebar() {
+  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [confirmRemove, setConfirmRemove] = createSignal<string | null>(null);
   const [editingProject, setEditingProject] = createSignal<Project | null>(null);
   const [showConnectPhone, setShowConnectPhone] = createSignal(false);
@@ -302,7 +304,7 @@ export function Sidebar() {
                 </svg>
               }
               onClick={() => toggleSettingsDialog(true)}
-              title={`Settings (${mod}+,)`}
+              title={t(`Settings (${mod}+,)`, `设置 (${mod}+,)`)}
             />
             <IconButton
               icon={
@@ -311,7 +313,7 @@ export function Sidebar() {
                 </svg>
               }
               onClick={() => toggleSidebar()}
-              title={`Collapse sidebar (${mod}+B)`}
+              title={t(`Collapse sidebar (${mod}+B)`, `折叠侧边栏 (${mod}+B)`)}
             />
           </div>
         </div>
@@ -334,7 +336,7 @@ export function Sidebar() {
                 'letter-spacing': '0.05em',
               }}
             >
-              Projects
+              {t('Projects', '项目')}
             </label>
             <IconButton
               icon={
@@ -343,7 +345,7 @@ export function Sidebar() {
                 </svg>
               }
               onClick={() => handleAddProject()}
-              title="Add project"
+              title={t('Add project', '添加项目')}
               size="sm"
             />
           </div>
@@ -412,7 +414,8 @@ export function Sidebar() {
                     e.stopPropagation();
                     handleRemoveProject(project.id);
                   }}
-                  title="Remove project"
+                  title={t('Remove project', '移除项目')}
+                  aria-label={t('Remove project', '移除项目')}
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -432,7 +435,7 @@ export function Sidebar() {
 
           <Show when={store.projects.length === 0}>
             <span style={{ 'font-size': sf(10), color: theme.fgSubtle, padding: '0 2px' }}>
-              No projects linked yet.
+              {t('No projects linked yet.', '尚未关联任何项目。')}
             </span>
           </Show>
         </div>
@@ -471,7 +474,7 @@ export function Sidebar() {
               >
                 <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.22.78 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2A1.75 1.75 0 0 0 5 1H1.75Z" />
               </svg>
-              Link Project
+              {t('Link Project', '关联项目')}
             </button>
           }
         >
@@ -497,7 +500,7 @@ export function Sidebar() {
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
             </svg>
-            New Task
+            {t('New Task', '新建任务')}
           </button>
         </Show>
 
@@ -590,7 +593,7 @@ export function Sidebar() {
                 padding: '0 2px',
               }}
             >
-              Other ({groupedTasks().orphaned.length})
+              {t('Other', '其他')} ({groupedTasks().orphaned.length})
             </span>
             <For each={groupedTasks().orphaned}>
               {(taskId) => (
@@ -635,7 +638,9 @@ export function Sidebar() {
                 <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
                 <line x1="12" y1="18" x2="12.01" y2="18" />
               </svg>
-              {enabled() ? `Disconnect Phone${store.remoteAccess.connectedClients > 0 ? ` (${store.remoteAccess.connectedClients})` : ''}` : 'Connect Phone'}
+              {enabled()
+                ? `${t('Disconnect Phone', '断开手机连接')}${store.remoteAccess.connectedClients > 0 ? ` (${store.remoteAccess.connectedClients})` : ''}`
+                : t('Connect Phone', '连接手机')}
             </button>
           );
         })()}
@@ -653,11 +658,16 @@ export function Sidebar() {
         {/* Confirm remove project dialog */}
         <ConfirmDialog
           open={confirmRemove() !== null}
-          title="Remove project?"
-          message={`This project has ${
-            store.taskOrder.filter((tid) => store.tasks[tid]?.projectId === confirmRemove()).length
-          } open task(s). Removing it will also close all tasks, delete their worktrees and branches.`}
-          confirmLabel="Remove all"
+          title={t('Remove project?', '移除项目？')}
+          message={t(
+            `This project has ${
+              store.taskOrder.filter((tid) => store.tasks[tid]?.projectId === confirmRemove()).length
+            } open task(s). Removing it will also close all tasks, delete their worktrees and branches.`,
+            `该项目有 ${
+              store.taskOrder.filter((tid) => store.tasks[tid]?.projectId === confirmRemove()).length
+            } 个打开的任务。移除项目将同时关闭所有任务，并删除对应的 worktree 和分支。`,
+          )}
+          confirmLabel={t('Remove all', '全部移除')}
           danger
           onConfirm={() => {
             const id = confirmRemove();

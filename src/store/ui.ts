@@ -2,6 +2,7 @@ import { produce } from 'solid-js/store';
 import { store, setStore } from './core';
 import type { TerminalFont } from '../lib/fonts';
 import type { LookPreset } from '../lib/look';
+import type { AppLocale } from '../lib/i18n';
 import type { PersistedWindowState } from './types';
 
 // --- Font Scale (per-panel) ---
@@ -77,6 +78,10 @@ export function setTerminalFont(terminalFont: TerminalFont): void {
 
 export function setThemePreset(themePreset: LookPreset): void {
   setStore('themePreset', themePreset);
+}
+
+export function setLocale(locale: AppLocale): void {
+  setStore('locale', locale);
 }
 
 export function setAutoTrustFolders(autoTrustFolders: boolean): void {

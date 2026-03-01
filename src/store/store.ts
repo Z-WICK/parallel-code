@@ -86,6 +86,7 @@ export {
   toggleArena,
   setTerminalFont,
   setThemePreset,
+  setLocale,
   setAutoTrustFolders,
   setInactiveColumnOpacity,
   setWindowState,
