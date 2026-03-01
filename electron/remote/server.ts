@@ -4,7 +4,6 @@ import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { existsSync, createReadStream } from "fs";
 import { join, resolve, relative, extname, isAbsolute } from "path";
 import { WebSocketServer, WebSocket } from "ws";
-import { randomBytes, timingSafeEqual } from "crypto";
 import { networkInterfaces } from "os";
 import {
   writeToAgent,
@@ -23,6 +22,8 @@ import {
   type ServerMessage,
   type RemoteAgent,
 } from "./protocol.js";
+import { createRotatingTokenStore } from "./rotating-token-store.js";
+import { createRefreshSessionStore } from "./refresh-session-store.js";
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -37,6 +38,9 @@ const MIME: Record<string, string> = {
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const TOKEN_EXPIRY_CHECK_MS = 5 * 1000;
 const TOKEN_GRACE_MS = 60 * 1000;
+const MAX_PREVIOUS_TOKENS = 1;
+const REFRESH_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_REFRESH_TOKENS = 64;
 
 interface RemoteServer {
   stop: () => Promise<void>;
@@ -103,53 +107,19 @@ export function startRemoteServer(opts: {
   getTaskName: (taskId: string) => string;
   getAgentStatus: (agentId: string) => { status: "running" | "exited"; exitCode: number | null; lastLine: string };
 }): RemoteServer {
-  const authState: {
-    current: { token: string; tokenBuf: Buffer; expiresAt: number };
-    previous: { tokenBuf: Buffer; graceUntil: number } | null;
-  } = {
-    current: {
-      token: "",
-      tokenBuf: Buffer.alloc(0),
-      expiresAt: 0,
-    },
-    previous: null,
-  };
-
-  function issueToken(): { token: string; tokenBuf: Buffer; expiresAt: number } {
-    const token = randomBytes(24).toString("base64url");
-    return {
-      token,
-      tokenBuf: Buffer.from(token),
-      expiresAt: Date.now() + TOKEN_TTL_MS,
-    };
-  }
-  authState.current = issueToken();
-
-  function safeCompare(candidate: string | null | undefined): boolean {
-    if (!candidate) return false;
-    const now = Date.now();
-    const buf = Buffer.from(candidate);
-    if (
-      now <= authState.current.expiresAt &&
-      buf.length === authState.current.tokenBuf.length &&
-      timingSafeEqual(buf, authState.current.tokenBuf)
-    ) {
-      return true;
-    }
-    if (
-      authState.previous &&
-      now <= authState.previous.graceUntil &&
-      buf.length === authState.previous.tokenBuf.length &&
-      timingSafeEqual(buf, authState.previous.tokenBuf)
-    ) {
-      return true;
-    }
-    return false;
-  }
+  const tokenStore = createRotatingTokenStore({
+    tokenTtlMs: TOKEN_TTL_MS,
+    previousTokenTtlMs: TOKEN_GRACE_MS,
+    maxPreviousTokens: MAX_PREVIOUS_TOKENS,
+  });
+  const refreshStore = createRefreshSessionStore({
+    ttlMs: REFRESH_TOKEN_TTL_MS,
+    maxTokens: MAX_REFRESH_TOKENS,
+  });
 
   function checkAuthHeader(req: IncomingMessage): boolean {
     const auth = req.headers.authorization;
-    return auth?.startsWith("Bearer ") ? safeCompare(auth.slice(7)) : false;
+    return auth?.startsWith("Bearer ") ? tokenStore.accepts(auth.slice(7)) : false;
   }
 
   function getWsProtocolToken(req: IncomingMessage): string | null {
@@ -183,16 +153,49 @@ export function startRemoteServer(opts: {
     "Referrer-Policy": "no-referrer",
   };
 
+  function writeJson(res: ServerResponse, status: number, payload: unknown): void {
+    res.writeHead(status, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
+    res.end(JSON.stringify(payload));
+  }
+
+  function issueTokenPayload(includeRefreshToken = false): {
+    token: string;
+    tokenExpiresAt: number;
+    refreshToken?: string;
+    url: string;
+    wifiUrl: string | null;
+    tailscaleUrl: string | null;
+  } {
+    const urls = currentUrls();
+    return {
+      token: tokenStore.token,
+      tokenExpiresAt: tokenStore.tokenExpiresAt,
+      ...(includeRefreshToken ? { refreshToken: refreshStore.issue() } : {}),
+      url: urls.url,
+      wifiUrl: urls.wifiUrl,
+      tailscaleUrl: urls.tailscaleUrl,
+    };
+  }
+
+  function sendTokenMessage(ws: WebSocket, includeRefreshToken = false): void {
+    ws.send(
+      JSON.stringify({
+        type: "token",
+        ...issueTokenPayload(includeRefreshToken),
+      } satisfies ServerMessage),
+    );
+  }
+
   function currentUrls(): { url: string; wifiUrl: string | null; tailscaleUrl: string | null } {
     // Re-detect interfaces dynamically so newly connected networks (e.g. Tailscale)
     // are reflected without restarting the remote server.
     const ips = getNetworkIps();
     // Use query token in the shared URL to avoid camera-app fragment loss on iOS.
-    const localUrl = `http://127.0.0.1:${opts.port}/?token=${authState.current.token}`;
+    const localUrl = `http://127.0.0.1:${opts.port}/?token=${tokenStore.token}`;
     const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? "127.0.0.1") : "127.0.0.1";
-    const url = `http://${primaryIp}:${opts.port}/?token=${authState.current.token}`;
-    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/?token=${authState.current.token}` : null;
-    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/?token=${authState.current.token}` : null;
+    const url = `http://${primaryIp}:${opts.port}/?token=${tokenStore.token}`;
+    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/?token=${tokenStore.token}` : null;
+    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/?token=${tokenStore.token}` : null;
     return { url: opts.allowExternal ? url : localUrl, wifiUrl, tailscaleUrl };
   }
 
@@ -201,16 +204,56 @@ export function startRemoteServer(opts: {
 
     // --- API routes (require auth) ---
     if (url.pathname.startsWith("/api/")) {
+      if (url.pathname === "/api/auth/refresh" && req.method === "POST") {
+        let raw = "";
+        req.on("data", (chunk: Buffer) => {
+          raw += chunk.toString("utf8");
+          if (raw.length > 8 * 1024) req.destroy();
+        });
+        req.on("error", () => {
+          writeJson(res, 400, { error: "bad request" });
+        });
+        req.on("end", () => {
+          let refreshToken: string | null = null;
+          try {
+            const parsed = JSON.parse(raw) as { refreshToken?: unknown };
+            refreshToken =
+              typeof parsed.refreshToken === "string" ? parsed.refreshToken : null;
+          } catch {
+            writeJson(res, 400, { error: "invalid json" });
+            return;
+          }
+
+          const nextRefreshToken = refreshStore.exchange(refreshToken);
+          if (!nextRefreshToken) {
+            writeJson(res, 401, { error: "unauthorized" });
+            return;
+          }
+
+          if (Date.now() > tokenStore.tokenExpiresAt) {
+            rotateToken();
+          }
+          const urls = currentUrls();
+          writeJson(res, 200, {
+            token: tokenStore.token,
+            tokenExpiresAt: tokenStore.tokenExpiresAt,
+            refreshToken: nextRefreshToken,
+            url: urls.url,
+            wifiUrl: urls.wifiUrl,
+            tailscaleUrl: urls.tailscaleUrl,
+          });
+        });
+        return;
+      }
+
       if (!checkAuthHeader(req)) {
-        res.writeHead(401, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "unauthorized" }));
+        writeJson(res, 401, { error: "unauthorized" });
         return;
       }
 
       if (url.pathname === "/api/agents" && req.method === "GET") {
         const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
-        res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
-        res.end(JSON.stringify(list));
+        writeJson(res, 200, list);
         return;
       }
 
@@ -219,19 +262,21 @@ export function startRemoteServer(opts: {
         const agentId = agentMatch[1];
         const scrollback = getAgentScrollback(agentId);
         if (scrollback === null) {
-          res.writeHead(404, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "agent not found" }));
+          writeJson(res, 404, { error: "agent not found" });
           return;
         }
         const meta = getAgentMeta(agentId);
         const info = meta ? opts.getAgentStatus(agentId) : null;
-        res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
-        res.end(JSON.stringify({ agentId, scrollback, status: info?.status ?? "exited", exitCode: info?.exitCode ?? null }));
+        writeJson(res, 200, {
+          agentId,
+          scrollback,
+          status: info?.status ?? "exited",
+          exitCode: info?.exitCode ?? null,
+        });
         return;
       }
 
-      res.writeHead(404, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "not found" }));
+      writeJson(res, 404, { error: "not found" });
       return;
     }
 
@@ -283,7 +328,7 @@ export function startRemoteServer(opts: {
         cb(false, 429, "Too many connections");
         return;
       }
-      if (!safeCompare(getWsHandshakeToken(info.req))) {
+      if (!tokenStore.accepts(getWsHandshakeToken(info.req))) {
         cb(false, 401, "Unauthorized");
         return;
       }
@@ -294,38 +339,22 @@ export function startRemoteServer(opts: {
   const authedClients = new Set<WebSocket>();
 
   function rotateToken(): void {
-    const oldTokenBuf = authState.current.tokenBuf;
-    authState.current = issueToken();
-    authState.previous = {
-      tokenBuf: oldTokenBuf,
-      graceUntil: Date.now() + TOKEN_GRACE_MS,
-    };
-
-    const urls = currentUrls();
-    const tokenMessage = JSON.stringify({
-      type: "token",
-      token: authState.current.token,
-      tokenExpiresAt: authState.current.expiresAt,
-      url: urls.url,
-      wifiUrl: urls.wifiUrl,
-      tailscaleUrl: urls.tailscaleUrl,
-    } satisfies ServerMessage);
+    tokenStore.rotate();
 
     for (const client of authedClients) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(tokenMessage);
+        sendTokenMessage(client, false);
       }
     }
   }
 
   const tokenExpiryTimer = setInterval(() => {
     const now = Date.now();
-    if (now > authState.current.expiresAt) {
+    if (now > tokenStore.tokenExpiresAt) {
       rotateToken();
     }
-    if (authState.previous && now > authState.previous.graceUntil) {
-      authState.previous = null;
-    }
+    tokenStore.prune();
+    refreshStore.prune();
   }, TOKEN_EXPIRY_CHECK_MS);
 
   const clientSubs = new WeakMap<WebSocket, Map<string, (data: string) => void>>();
@@ -363,7 +392,7 @@ export function startRemoteServer(opts: {
   });
 
   wss.on("connection", (ws, req) => {
-    let authed = safeCompare(getWsHandshakeToken(req));
+    let authed = tokenStore.accepts(getWsHandshakeToken(req));
     const authTimeout = setTimeout(() => {
       if (!authed && ws.readyState === WebSocket.OPEN) {
         ws.close(4001, "Auth timeout");
@@ -379,6 +408,7 @@ export function startRemoteServer(opts: {
       authedClients.add(ws);
       clearTimeout(authTimeout);
       sendAgentList();
+      sendTokenMessage(ws, true);
     }
 
     clientSubs.set(ws, new Map());
@@ -387,7 +417,7 @@ export function startRemoteServer(opts: {
       const msg = parseClientMessage(String(raw));
       if (!msg) return;
       if (!authed) {
-        if (msg.type !== "auth" || !safeCompare(msg.token)) {
+        if (msg.type !== "auth" || !tokenStore.accepts(msg.token)) {
           ws.close(4001, "Unauthorized");
           return;
         }
@@ -395,6 +425,7 @@ export function startRemoteServer(opts: {
         authedClients.add(ws);
         clearTimeout(authTimeout);
         sendAgentList();
+        sendTokenMessage(ws, true);
         return;
       }
 
@@ -465,8 +496,8 @@ export function startRemoteServer(opts: {
   server.listen(opts.port, bindHost);
 
   return {
-    get token() { return authState.current.token; },
-    get tokenExpiresAt() { return authState.current.expiresAt; },
+    get token() { return tokenStore.token; },
+    get tokenExpiresAt() { return tokenStore.tokenExpiresAt; },
     port: opts.port,
     get url() { return currentUrls().url; },
     get wifiUrl() { return currentUrls().wifiUrl; },

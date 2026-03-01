@@ -39,6 +39,7 @@ export interface TokenMessage {
   type: "token";
   token: string;
   tokenExpiresAt: number;
+  refreshToken?: string;
   url: string;
   wifiUrl: string | null;
   tailscaleUrl: string | null;

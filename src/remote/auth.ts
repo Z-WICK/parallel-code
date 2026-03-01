@@ -1,4 +1,5 @@
 const TOKEN_KEY = "parallel-code-token";
+const REFRESH_TOKEN_KEY = "parallel-code-refresh-token";
 
 /** Extract token from URL (hash/query) and persist to localStorage. */
 export function initAuth(): string | null {
@@ -34,9 +35,58 @@ export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+/** Get the stored refresh token. */
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+/** Replace refresh token in localStorage (used for seamless reconnect). */
+export function setRefreshToken(token: string): void {
+  localStorage.setItem(REFRESH_TOKEN_KEY, token);
+}
+
 /** Clear stored token. */
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Clear stored refresh token. */
+export function clearRefreshToken(): void {
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+/**
+ * Exchange refresh token for a fresh access token.
+ * Returns true on success and updates localStorage tokens.
+ */
+export async function refreshAuthToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!response.ok) return false;
+
+    const payload = (await response.json()) as {
+      token?: string;
+      refreshToken?: string;
+      tokenExpiresAt?: number;
+      url?: string;
+      wifiUrl?: string | null;
+      tailscaleUrl?: string | null;
+    };
+    if (!payload.token || !payload.refreshToken) return false;
+
+    setToken(payload.token);
+    setRefreshToken(payload.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Build an authenticated URL for API requests. */

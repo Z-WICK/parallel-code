@@ -1,5 +1,5 @@
 import { createSignal, onMount, Show } from 'solid-js';
-import { initAuth } from './auth';
+import { initAuth, getRefreshToken, refreshAuthToken } from './auth';
 import { connect } from './ws';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
@@ -24,6 +24,17 @@ export function App() {
     if (token) {
       setAuthed(true);
       connect();
+      return;
+    }
+
+    // App may be launched from Home Screen long after access-token rotation.
+    // If a refresh token exists, try a silent re-auth before showing fallback.
+    if (getRefreshToken()) {
+      void refreshAuthToken().then((ok) => {
+        if (!ok) return;
+        setAuthed(true);
+        connect();
+      });
     }
   });
 

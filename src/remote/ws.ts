@@ -1,5 +1,12 @@
 import { createSignal } from "solid-js";
-import { getToken, setToken, clearToken } from "./auth";
+import {
+  getToken,
+  setToken,
+  clearToken,
+  setRefreshToken,
+  clearRefreshToken,
+  refreshAuthToken,
+} from "./auth";
 import type { ServerMessage, RemoteAgent } from "../../electron/remote/protocol";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
@@ -14,6 +21,7 @@ const scrollbackListeners = new Map<string, Set<ScrollbackListener>>();
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let refreshInFlight = false;
 
 export { agents, status };
 
@@ -84,6 +92,7 @@ export function connect(): void {
         // Server rotates tokens in the background; persist immediately so
         // reconnects and authenticated API calls stay seamless.
         setToken(msg.token);
+        if (msg.refreshToken) setRefreshToken(msg.refreshToken);
         break;
     }
   };
@@ -91,10 +100,22 @@ export function connect(): void {
   ws.onclose = (event) => {
     ws = null;
     setStatus("disconnected");
-    // 4001 = server rejected auth — token is stale, reload to re-auth
+    // 4001 = server rejected auth — access token is stale/invalid.
+    // Try refresh flow once before forcing re-auth by QR.
     if (event.code === 4001) {
-      clearToken();
-      window.location.reload();
+      if (!refreshInFlight) {
+        refreshInFlight = true;
+        void refreshAuthToken().then((ok) => {
+          refreshInFlight = false;
+          if (ok) {
+            connect();
+            return;
+          }
+          clearToken();
+          clearRefreshToken();
+          window.location.reload();
+        });
+      }
       return;
     }
     reconnectTimer = setTimeout(connect, 3000);
