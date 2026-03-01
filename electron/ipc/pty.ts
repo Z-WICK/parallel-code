@@ -238,10 +238,12 @@ export function spawnAgent(
   emitPtyEvent('spawn', args.agentId);
 }
 
-export function writeToAgent(agentId: string, data: string): void {
+/** Write input to an agent. Returns false when the agent already exited. */
+export function writeToAgent(agentId: string, data: string): boolean {
   const session = sessions.get(agentId);
-  if (!session) throw new Error(`Agent not found: ${agentId}`);
+  if (!session) return false;
   session.proc.write(data);
+  return true;
 }
 
 export function resizeAgent(agentId: string, cols: number, rows: number): void {

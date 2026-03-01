@@ -114,6 +114,9 @@ export function TerminalView(props: TerminalViewProps) {
         isGlobalShortcut: matchesGlobalShortcut,
         getSelection: () => term!.getSelection(),
         readClipboardText: () => navigator.clipboard.readText(),
+        readClipboardItems: () => navigator.clipboard.read(),
+        saveClipboardImage: (base64Data, mimeType) =>
+          invoke<string>(IPC.SaveClipboardImage, { base64Data, mimeType }),
         writeClipboardText: (text) => navigator.clipboard.writeText(text),
         enqueueInput,
       }),

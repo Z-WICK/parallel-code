@@ -62,6 +62,7 @@ export enum IPC {
   // Shell
   ShellReveal = '__shell_reveal',
   ShellOpenFile = '__shell_open_file',
+  SaveClipboardImage = 'save_clipboard_image',
 
   // Arena
   SaveArenaData = 'save_arena_data',

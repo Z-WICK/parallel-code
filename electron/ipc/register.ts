@@ -1,4 +1,5 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron';
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { IPC } from './channels.js';
@@ -63,6 +64,24 @@ function validatePort(port: unknown, label: string): void {
   }
   if (port < 1 || port > 65535) {
     throw new Error(`${label} must be between 1 and 65535`);
+  }
+}
+
+const MAX_CLIPBOARD_IMAGE_BYTES = 15 * 1024 * 1024;
+
+function extensionForImageMime(mimeType: string): string | null {
+  const normalized = mimeType.trim().toLowerCase();
+  switch (normalized) {
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    default:
+      return null;
   }
 }
 
@@ -288,6 +307,34 @@ export function registerAllHandlers(win: BrowserWindow): void {
     validatePath(args.worktreePath, 'worktreePath');
     validateRelativePath(args.filePath, 'filePath');
     return shell.openPath(path.join(args.worktreePath, args.filePath));
+  });
+
+  ipcMain.handle(IPC.SaveClipboardImage, (_e, args) => {
+    const mimeType = typeof args?.mimeType === 'string' ? args.mimeType : '';
+    const base64Data = typeof args?.base64Data === 'string' ? args.base64Data : '';
+    if (!mimeType || !base64Data) {
+      throw new Error('Invalid clipboard image payload');
+    }
+
+    const ext = extensionForImageMime(mimeType);
+    if (!ext) throw new Error(`Unsupported clipboard image type: ${mimeType}`);
+
+    let bytes: Buffer;
+    try {
+      bytes = Buffer.from(base64Data, 'base64');
+    } catch {
+      throw new Error('Invalid clipboard image encoding');
+    }
+    if (!bytes.length) throw new Error('Clipboard image is empty');
+    if (bytes.length > MAX_CLIPBOARD_IMAGE_BYTES) {
+      throw new Error(`Clipboard image too large (${bytes.length} bytes)`);
+    }
+
+    const dir = path.join(app.getPath('temp'), 'parallel-code', 'clipboard-images');
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, `clipboard-${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`);
+    fs.writeFileSync(filePath, bytes);
+    return filePath;
   });
 
   // --- Remote access ---
