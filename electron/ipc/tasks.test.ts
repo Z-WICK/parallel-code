@@ -34,4 +34,10 @@ describe('createTask', () => {
 
     expect(createWorktreeMock).toHaveBeenCalledWith('/repo', 'feature/team-name/fix-login-bug', []);
   });
+
+  it('never returns prefix-only branch names', async () => {
+    await createTask('   ', '/repo', [], 'task/');
+
+    expect(createWorktreeMock).toHaveBeenCalledWith('/repo', 'task/untitled', []);
+  });
 });

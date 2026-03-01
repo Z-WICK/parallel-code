@@ -4,6 +4,7 @@ import { killAgent, notifyAgentListChanged } from './pty.js';
 
 const MAX_SLUG_LEN = 72;
 const DEFAULT_TASK_SLUG = 'untitled';
+const DEFAULT_BRANCH_PREFIX = 'task';
 
 function slug(name: string): string {
   let result = '';
@@ -22,11 +23,20 @@ function slug(name: string): string {
 }
 
 function sanitizeBranchPrefix(prefix: string): string {
-  const parts = prefix
+  const normalized = prefix.trim().replace(/\\/g, '/').replace(/\/+/g, '/');
+  const parts = normalized
     .split('/')
     .map(slug)
     .filter((p) => p.length > 0);
-  return parts.length === 0 ? 'task' : parts.join('/');
+  return parts.length === 0 ? DEFAULT_BRANCH_PREFIX : parts.join('/');
+}
+
+function ensureBranchNameHasLeaf(rawBranchName: string): string {
+  const normalized = rawBranchName.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/+|\/+$/g, '');
+  const parts = normalized.split('/').filter((p) => p.length > 0);
+  if (parts.length === 0) return `${DEFAULT_BRANCH_PREFIX}/${DEFAULT_TASK_SLUG}`;
+  if (parts.length === 1) return `${parts[0]}/${DEFAULT_TASK_SLUG}`;
+  return parts.join('/');
 }
 
 export async function createTask(
@@ -37,7 +47,7 @@ export async function createTask(
 ): Promise<{ id: string; branch_name: string; worktree_path: string }> {
   const prefix = sanitizeBranchPrefix(branchPrefix);
   const branchLeaf = slug(name) || DEFAULT_TASK_SLUG;
-  const branchName = `${prefix}/${branchLeaf}`;
+  const branchName = ensureBranchNameHasLeaf(`${prefix}/${branchLeaf}`);
   const worktree = await createWorktree(projectRoot, branchName, symlinkDirs);
   return {
     id: randomUUID(),
