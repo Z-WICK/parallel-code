@@ -148,15 +148,12 @@ export function setSelectedHistoryMatch(match: ArenaMatch | null): void {
   setState('selectedHistoryMatch', match);
 }
 
-export function updateHistoryRating(matchId: string, competitorIndex: number, rating: number): void {
-  setState(
-    'history',
-    (m) => m.id === matchId,
-    'competitors',
-    competitorIndex,
-    'rating',
-    rating,
-  );
+export function updateHistoryRating(
+  matchId: string,
+  competitorIndex: number,
+  rating: number,
+): void {
+  setState('history', (m) => m.id === matchId, 'competitors', competitorIndex, 'rating', rating);
 }
 
 // --- Presets ---
@@ -249,7 +246,20 @@ export function deletePreset(id: string): void {
 
 // --- Reset ---
 
+async function killRunningBattleAgents(): Promise<void> {
+  for (const c of state.battle) {
+    if (c.status === 'running' && c.agentId) {
+      try {
+        await invoke(IPC.KillAgent, { agentId: c.agentId });
+      } catch {
+        /* agent already exited */
+      }
+    }
+  }
+}
+
 export async function resetForNewMatch(): Promise<void> {
+  await killRunningBattleAgents();
   await cleanupBattleWorktrees();
   setState('battleSaved', false);
   setState('phase', 'config');
@@ -261,6 +271,7 @@ export async function resetForNewMatch(): Promise<void> {
 }
 
 export async function resetForRematch(): Promise<void> {
+  await killRunningBattleAgents();
   await cleanupBattleWorktrees();
   setState('battleSaved', false);
   setState('phase', 'config');

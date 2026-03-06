@@ -1,4 +1,5 @@
-import { createSignal, createEffect, onMount, onCleanup, untrack } from 'solid-js';
+import { createSignal, createEffect, onMount, onCleanup, untrack, createMemo } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import {
@@ -19,10 +20,18 @@ import {
   isAgentAskingQuestion,
   getTaskFocusedPanel,
   setTaskFocusedPanel,
+  getSlashCommands,
 } from '../store/store';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { localize } from '../lib/i18n';
+import {
+  applySlashCompletion,
+  filterSlashCommands,
+  parseSlashQuery,
+  type SlashQueryState,
+} from '../lib/slash-commands';
+import { SlashCommandMenu } from './SlashCommandMenu';
 
 export interface PromptInputHandle {
   getText: () => string;
@@ -61,6 +70,12 @@ const AUTOSEND_MAX_WAIT_MS = 45_000;
 const PROMPT_VERIFY_TIMEOUT_MS = 5_000;
 const PROMPT_VERIFY_POLL_MS = 250;
 
+const SLASH_MENU_GAP_PX = 6;
+const SLASH_MENU_MAX_HEIGHT_PX = 320;
+const SLASH_MENU_MIN_HEIGHT_PX = 120;
+const SLASH_MENU_MIN_WIDTH_PX = 280;
+const SLASH_MENU_VIEWPORT_PADDING_PX = 8;
+
 /** True when auto-send should be blocked by a question in the output.
  *  Trust-dialog questions are NOT blocking when auto-trust handles them. */
 function isQuestionBlockingAutoSend(tail: string): boolean {
@@ -74,6 +89,21 @@ export function PromptInput(props: PromptInputProps) {
   const [text, setText] = createSignal('');
   const [sending, setSending] = createSignal(false);
   const [autoSentInitialPrompt, setAutoSentInitialPrompt] = createSignal<string | null>(null);
+  const [slashMenuOpen, setSlashMenuOpen] = createSignal(false);
+  const [slashActiveIndex, setSlashActiveIndex] = createSignal(0);
+  const [slashMenuStyle, setSlashMenuStyle] = createSignal<Record<string, string>>({
+    left: '0px',
+    top: '0px',
+    width: `${SLASH_MENU_MIN_WIDTH_PX}px`,
+    'max-height': `${SLASH_MENU_MAX_HEIGHT_PX}px`,
+    transform: 'translateY(calc(-100% - 6px))',
+  });
+  const [slashState, setSlashState] = createSignal<SlashQueryState>({
+    active: false,
+    query: '',
+    replaceStart: 0,
+    replaceEnd: 0,
+  });
   let cleanupAutoSend: (() => void) | undefined;
 
   createEffect(() => {
@@ -253,15 +283,126 @@ export function PromptInput(props: PromptInputProps) {
     }
   });
 
+  const slashCommands = createMemo(() => getSlashCommands());
+  const filteredSlashCommands = createMemo(() => {
+    if (!slashMenuOpen()) return [];
+    return filterSlashCommands(slashCommands(), slashState().query);
+  });
+
+  createEffect(() => {
+    const commands = filteredSlashCommands();
+    if (commands.length === 0) {
+      setSlashActiveIndex(0);
+      return;
+    }
+    if (slashActiveIndex() >= commands.length) {
+      setSlashActiveIndex(commands.length - 1);
+    }
+  });
+
+  function closeSlashMenu() {
+    setSlashMenuOpen(false);
+    setSlashActiveIndex(0);
+    setSlashState({ active: false, query: '', replaceStart: 0, replaceEnd: 0 });
+  }
+
+  function updateSlashMenuPosition() {
+    if (!textareaRef) return;
+    const rect = textareaRef.getBoundingClientRect();
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    const desiredWidth = Math.max(SLASH_MENU_MIN_WIDTH_PX, Math.round(rect.width));
+    const maxWidth = Math.max(200, viewportWidth - SLASH_MENU_VIEWPORT_PADDING_PX * 2);
+    const width = Math.min(desiredWidth, maxWidth);
+
+    const preferredLeft = Math.round(rect.left);
+    const minLeft = SLASH_MENU_VIEWPORT_PADDING_PX;
+    const maxLeft = Math.max(minLeft, viewportWidth - width - SLASH_MENU_VIEWPORT_PADDING_PX);
+    const left = Math.min(Math.max(preferredLeft, minLeft), maxLeft);
+
+    const spaceAbove = rect.top - SLASH_MENU_VIEWPORT_PADDING_PX - SLASH_MENU_GAP_PX;
+    const spaceBelow =
+      viewportHeight - rect.bottom - SLASH_MENU_VIEWPORT_PADDING_PX - SLASH_MENU_GAP_PX;
+
+    const openAbove = spaceAbove >= SLASH_MENU_MIN_HEIGHT_PX || spaceAbove >= spaceBelow;
+
+    const availableHeight = Math.max(0, openAbove ? spaceAbove : spaceBelow);
+    const availableHeightPx = Math.floor(availableHeight);
+    const maxHeight =
+      availableHeightPx >= SLASH_MENU_MIN_HEIGHT_PX
+        ? Math.min(SLASH_MENU_MAX_HEIGHT_PX, availableHeightPx)
+        : Math.max(0, availableHeightPx);
+
+    const anchorTop = openAbove
+      ? Math.round(rect.top - SLASH_MENU_GAP_PX)
+      : Math.round(rect.bottom + SLASH_MENU_GAP_PX);
+
+    setSlashMenuStyle({
+      left: `${left}px`,
+      top: `${anchorTop}px`,
+      width: `${Math.round(width)}px`,
+      'max-height': `${Math.round(maxHeight)}px`,
+      transform: openAbove ? 'translateY(-100%)' : 'translateY(0)',
+    });
+  }
+
+  function refreshSlashMenuFromTextarea() {
+    const el = textareaRef;
+    if (!el) return;
+
+    const nextState = parseSlashQuery(el.value, el.selectionStart ?? 0);
+    if (!nextState.active) {
+      closeSlashMenu();
+      return;
+    }
+
+    const nextCommands = filterSlashCommands(slashCommands(), nextState.query);
+    if (nextCommands.length === 0) {
+      closeSlashMenu();
+      return;
+    }
+
+    setSlashState(nextState);
+    updateSlashMenuPosition();
+    setSlashMenuOpen(true);
+  }
+
+  function applySlashCommandByIndex(index: number) {
+    const commands = filteredSlashCommands();
+    const command = commands[index];
+    if (!command) return;
+
+    const completion = applySlashCompletion(text(), command, slashState());
+    setText(completion.text);
+    closeSlashMenu();
+
+    queueMicrotask(() => {
+      if (!textareaRef) return;
+      textareaRef.focus();
+      textareaRef.setSelectionRange(completion.caret, completion.caret);
+    });
+  }
+
   let textareaRef: HTMLTextAreaElement | undefined;
 
   onMount(() => {
     props.handle?.({ getText: text, setText });
+    const onScrollOrResize = () => {
+      if (!slashMenuOpen()) return;
+      updateSlashMenuPosition();
+    };
+
+    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', onScrollOrResize, true);
     const focusKey = `${props.taskId}:prompt`;
     const actionKey = `${props.taskId}:send-prompt`;
     registerFocusFn(focusKey, () => textareaRef?.focus());
     registerAction(actionKey, () => handleSend());
     onCleanup(() => {
+      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', onScrollOrResize, true);
       unregisterFocusFn(focusKey);
       unregisterAction(actionKey);
     });
@@ -356,6 +497,7 @@ export function PromptInput(props: PromptInputProps) {
       }
       props.onSend?.(val);
       setText('');
+      closeSlashMenu();
     } catch (e) {
       console.error('Failed to send prompt:', e);
     } finally {
@@ -378,8 +520,58 @@ export function PromptInput(props: PromptInputProps) {
           rows={3}
           value={text()}
           disabled={questionActive()}
-          onInput={(e) => setText(e.currentTarget.value)}
+          onInput={(e) => {
+            setText(e.currentTarget.value);
+            refreshSlashMenuFromTextarea();
+          }}
+          onClick={() => refreshSlashMenuFromTextarea()}
+          onKeyUp={() => refreshSlashMenuFromTextarea()}
           onKeyDown={(e) => {
+            if (e.isComposing || (e as KeyboardEvent & { keyCode?: number }).keyCode === 229) {
+              return;
+            }
+
+            if (slashMenuOpen()) {
+              const commands = filteredSlashCommands();
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                closeSlashMenu();
+                return;
+              }
+
+              if (e.key === 'ArrowDown') {
+                if (commands.length > 0) {
+                  e.preventDefault();
+                  setSlashActiveIndex((prev) => (prev + 1) % commands.length);
+                }
+                return;
+              }
+
+              if (e.key === 'ArrowUp') {
+                if (commands.length > 0) {
+                  e.preventDefault();
+                  setSlashActiveIndex((prev) => (prev - 1 + commands.length) % commands.length);
+                }
+                return;
+              }
+
+              if (e.key === 'Tab') {
+                if (commands.length > 0) {
+                  e.preventDefault();
+                  applySlashCommandByIndex(slashActiveIndex());
+                }
+                return;
+              }
+
+              if (e.key === 'Enter' && !e.shiftKey) {
+                if (commands.length > 0) {
+                  e.preventDefault();
+                  applySlashCommandByIndex(slashActiveIndex());
+                }
+                return;
+              }
+            }
+
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               handleSend();
@@ -388,7 +580,10 @@ export function PromptInput(props: PromptInputProps) {
           placeholder={
             questionActive()
               ? t('Agent is waiting for input in terminal…', '代理正在终端中等待输入…')
-              : t('Send a prompt... (Enter to send, Shift+Enter for newline)', '发送提示词...（Enter 发送，Shift+Enter 换行）')
+              : t(
+                  'Send a prompt... (Enter to send, Shift+Enter for newline)',
+                  '发送提示词...（Enter 发送，Shift+Enter 换行）',
+                )
           }
           style={{
             flex: '1',
@@ -404,6 +599,20 @@ export function PromptInput(props: PromptInputProps) {
             opacity: questionActive() ? '0.5' : '1',
           }}
         />
+        {slashMenuOpen() && filteredSlashCommands().length > 0 && (
+          <Portal>
+            <SlashCommandMenu
+              commands={filteredSlashCommands()}
+              activeIndex={slashActiveIndex()}
+              style={slashMenuStyle()}
+              onSelect={(command) => {
+                const commands = filteredSlashCommands();
+                const idx = commands.findIndex((c) => c.id === command.id);
+                applySlashCommandByIndex(idx >= 0 ? idx : 0);
+              }}
+            />
+          </Portal>
+        )}
         <button
           class="prompt-send-btn"
           type="button"

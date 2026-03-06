@@ -87,6 +87,11 @@ export interface UnsubscribeCommand {
   agentId: string;
 }
 
+export interface AuthCommand {
+  type: 'auth';
+  token: string;
+}
+
 export type ClientMessage =
   | AuthCommand
   | InputCommand
@@ -99,15 +104,15 @@ export type ClientMessage =
 export function parseClientMessage(raw: string): ClientMessage | null {
   try {
     const msg = JSON.parse(raw) as Record<string, unknown>;
-    if (typeof msg.type !== "string") return null;
+    if (typeof msg.type !== 'string') return null;
 
-    if (msg.type === "auth") {
-      if (typeof msg.token !== "string") return null;
-      if (msg.token.length < 16 || msg.token.length > 256) return null;
-      return { type: "auth", token: msg.token };
+    if (msg.type === 'auth') {
+      if (typeof msg.token !== 'string') return null;
+      if (msg.token.length < 16 || msg.token.length > 200) return null;
+      return { type: 'auth', token: msg.token };
     }
 
-    if (typeof msg.agentId !== "string" || msg.agentId.length > 100) return null;
+    if (typeof msg.agentId !== 'string' || msg.agentId.length > 100) return null;
 
     switch (msg.type) {
       case "input":

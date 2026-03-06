@@ -4,6 +4,9 @@ const execFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock('child_process', () => ({
   execFile: execFileMock,
+  default: {
+    execFile: execFileMock,
+  },
 }));
 
 import { createWorktree } from './git.js';

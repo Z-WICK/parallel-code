@@ -49,6 +49,10 @@ export interface Task {
   directMode?: boolean;
   skipPermissions?: boolean;
   githubUrl?: string;
+  collapsed?: boolean;
+  savedAgentDef?: AgentDef;
+  planContent?: string;
+  planFileName?: string;
 }
 
 export interface Terminal {
@@ -72,6 +76,7 @@ export interface PersistedTask {
   skipPermissions?: boolean;
   githubUrl?: string;
   savedInitialPrompt?: string;
+  collapsed?: boolean;
 }
 
 export interface PersistedTerminal {
@@ -87,11 +92,20 @@ export interface PersistedWindowState {
   maximized: boolean;
 }
 
+export interface SlashCommand {
+  id: string;
+  name: string;
+  description: string;
+  template?: string;
+  source: 'built-in' | 'custom' | 'cli';
+}
+
 export interface PersistedState {
   projects: Project[];
   lastProjectId: string | null;
   lastAgentId: string | null;
   taskOrder: string[];
+  collapsedTaskOrder?: string[];
   tasks: Record<string, PersistedTask>;
   terminals?: Record<string, PersistedTerminal>;
   activeTaskId: string | null;
@@ -107,8 +121,11 @@ export interface PersistedState {
   themePreset?: LookPreset;
   windowState?: PersistedWindowState;
   autoTrustFolders?: boolean;
+  showPlans?: boolean;
   inactiveColumnOpacity?: number;
+  editorCommand?: string;
   customAgents?: AgentDef[];
+  customSlashCommands?: SlashCommand[];
   locale?: AppLocale;
 }
 
@@ -137,6 +154,7 @@ export interface AppStore {
   lastProjectId: string | null;
   lastAgentId: string | null;
   taskOrder: string[];
+  collapsedTaskOrder: string[];
   tasks: Record<string, Task>;
   terminals: Record<string, Terminal>;
   agents: Record<string, Agent>;
@@ -144,6 +162,8 @@ export interface AppStore {
   activeAgentId: string | null;
   availableAgents: AgentDef[];
   customAgents: AgentDef[];
+  customSlashCommands: SlashCommand[];
+  cliSlashCommands: SlashCommand[];
   showNewTaskDialog: boolean;
   sidebarVisible: boolean;
   fontScales: Record<string, number>;
@@ -169,9 +189,12 @@ export interface AppStore {
   locale: AppLocale;
   windowState: PersistedWindowState | null;
   autoTrustFolders: boolean;
+  showPlans: boolean;
   inactiveColumnOpacity: number;
+  editorCommand: string;
   newTaskDropUrl: string | null;
   newTaskPrefillPrompt: { prompt: string; projectId: string | null } | null;
+  missingProjectIds: Record<string, true>;
   remoteAccess: RemoteAccess;
   showArena: boolean;
 }

@@ -10,9 +10,12 @@ import {
   setThemePreset,
   setLocale,
   setAutoTrustFolders,
+  setShowPlans,
   setInactiveColumnOpacity,
+  setEditorCommand,
 } from '../store/store';
 import { CustomAgentEditor } from './CustomAgentEditor';
+import { CustomCommandEditor } from './CustomCommandEditor';
 import { mod } from '../lib/platform';
 import type { TerminalFont } from '../lib/fonts';
 
@@ -229,6 +232,88 @@ export function SettingsDialog(props: SettingsDialogProps) {
             </span>
           </div>
         </label>
+        <label
+          style={{
+            display: 'flex',
+            'align-items': 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            padding: '8px 12px',
+            'border-radius': '8px',
+            background: theme.bgInput,
+            border: `1px solid ${theme.border}`,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={store.showPlans}
+            onChange={(e) => setShowPlans(e.currentTarget.checked)}
+            style={{ 'accent-color': theme.accent, cursor: 'pointer' }}
+          />
+          <div style={{ display: 'flex', 'flex-direction': 'column', gap: '2px' }}>
+            <span style={{ 'font-size': '13px', color: theme.fg }}>Show plans</span>
+            <span style={{ 'font-size': '11px', color: theme.fgSubtle }}>
+              Display Claude Code plan files in a tab next to Notes
+            </span>
+          </div>
+        </label>
+      </div>
+
+      <div style={{ display: 'flex', 'flex-direction': 'column', gap: '10px' }}>
+        <div
+          style={{
+            'font-size': '11px',
+            color: theme.fgMuted,
+            'text-transform': 'uppercase',
+            'letter-spacing': '0.05em',
+            'font-weight': '600',
+          }}
+        >
+          Editor
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            'flex-direction': 'column',
+            gap: '6px',
+            padding: '8px 12px',
+            'border-radius': '8px',
+            background: theme.bgInput,
+            border: `1px solid ${theme.border}`,
+          }}
+        >
+          <label
+            style={{
+              display: 'flex',
+              'align-items': 'center',
+              gap: '10px',
+            }}
+          >
+            <span style={{ 'font-size': '13px', color: theme.fg, 'white-space': 'nowrap' }}>
+              Editor command
+            </span>
+            <input
+              type="text"
+              value={store.editorCommand}
+              onInput={(e) => setEditorCommand(e.currentTarget.value)}
+              placeholder="e.g. code, cursor, zed, subl"
+              style={{
+                flex: '1',
+                background: theme.taskPanelBg,
+                border: `1px solid ${theme.border}`,
+                'border-radius': '6px',
+                padding: '6px 10px',
+                color: theme.fg,
+                'font-size': '13px',
+                'font-family': "'JetBrains Mono', monospace",
+                outline: 'none',
+              }}
+            />
+          </label>
+          <span style={{ 'font-size': '11px', color: theme.fgSubtle }}>
+            CLI command to open worktree folders. Click the path bar in a task to open it.
+          </span>
+        </div>
       </div>
 
       <div style={{ display: 'flex', 'flex-direction': 'column', gap: '10px' }}>
@@ -316,6 +401,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
           {t('Custom Agents', '自定义代理')}
         </div>
         <CustomAgentEditor />
+      </div>
+
+      <div style={{ display: 'flex', 'flex-direction': 'column', gap: '10px' }}>
+        <div
+          style={{
+            'font-size': '11px',
+            color: theme.fgMuted,
+            'text-transform': 'uppercase',
+            'letter-spacing': '0.05em',
+            'font-weight': '600',
+          }}
+        >
+          {t('Custom Commands', '自定义命令')}
+        </div>
+        <CustomCommandEditor />
       </div>
 
       <div style={{ display: 'flex', 'flex-direction': 'column', gap: '10px' }}>

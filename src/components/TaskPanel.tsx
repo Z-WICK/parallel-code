@@ -1,6 +1,6 @@
 import { Show, For, createSignal, createEffect, onMount, onCleanup } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import { revealItemInDir } from '../lib/shell';
+import { revealItemInDir, openInEditor } from '../lib/shell';
 import {
   store,
   retryCloseTask,
@@ -10,6 +10,7 @@ import {
   updateTaskName,
   updateTaskNotes,
   spawnShellForTask,
+  runBookmarkInTask,
   closeShell,
   setLastPrompt,
   clearInitialPrompt,
@@ -24,6 +25,8 @@ import {
   setTaskFocusedPanel,
   triggerFocus,
   clearPendingAction,
+  showNotification,
+  collapseTask,
 } from '../store/store';
 import { ResizablePanel, type PanelChild } from './ResizablePanel';
 import { EditableText, type EditableTextHandle } from './EditableText';
@@ -34,14 +37,18 @@ import { ChangedFilesList } from './ChangedFilesList';
 import { StatusDot } from './StatusDot';
 import { TerminalView } from './TerminalView';
 import { ScalablePanel } from './ScalablePanel';
-import { TaskDialogs } from './TaskDialogs';
+import { Dialog } from './Dialog';
+import { CloseTaskDialog } from './CloseTaskDialog';
+import { MergeDialog } from './MergeDialog';
+import { PushDialog } from './PushDialog';
+import { DiffViewerDialog } from './DiffViewerDialog';
 import { EditProjectDialog } from './EditProjectDialog';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
-import { mod } from '../lib/platform';
+import { mod, isMac } from '../lib/platform';
 import { extractLabel, consumePendingShellCommand } from '../lib/bookmarks';
 import { handleDragReorder } from '../lib/dragReorder';
-import { localize } from '../lib/i18n';
+import { marked } from 'marked';
 import type { Task } from '../store/types';
 import type { ChangedFile } from '../ipc/types';
 
@@ -51,8 +58,22 @@ interface TaskPanelProps {
 }
 
 export function TaskPanel(props: TaskPanelProps) {
-  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [showCloseConfirm, setShowCloseConfirm] = createSignal(false);
+  const [notesTab, setNotesTab] = createSignal<'notes' | 'plan'>('notes');
+  const [planFullscreen, setPlanFullscreen] = createSignal(false);
+
+  // Auto-switch to plan tab when plan content first appears
+  let hadPlan = false;
+  createEffect(() => {
+    const hasPlan = store.showPlans && !!props.task.planContent;
+    if (hasPlan && !hadPlan) {
+      setNotesTab('plan');
+    } else if (!hasPlan && hadPlan) {
+      setNotesTab('notes');
+    }
+    hadPlan = hasPlan;
+  });
+
   const [showMergeConfirm, setShowMergeConfirm] = createSignal(false);
   const [showPushConfirm, setShowPushConfirm] = createSignal(false);
   const [pushSuccess, setPushSuccess] = createSignal(false);
@@ -112,10 +133,16 @@ export function TaskPanel(props: TaskPanelProps) {
   });
 
   // Auto-focus prompt when task first becomes active (if no panel set yet)
+  let autoFocusTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    if (autoFocusTimer !== undefined) clearTimeout(autoFocusTimer);
+  });
   createEffect(() => {
     if (props.isActive && !store.focusedPanel[props.task.id]) {
       const id = props.task.id;
-      setTimeout(() => {
+      if (autoFocusTimer !== undefined) clearTimeout(autoFocusTimer);
+      autoFocusTimer = setTimeout(() => {
+        autoFocusTimer = undefined;
         // Only focus prompt if no panel was set in the meantime
         if (!store.focusedPanel[id] && !panelRef.contains(document.activeElement)) {
           promptRef?.focus();
@@ -228,7 +255,7 @@ export function TaskPanel(props: TaskPanelProps) {
                   </svg>
                 }
                 onClick={openMergeConfirm}
-                title={t('Merge into main', '合并到主分支')}
+                title="Merge into main"
               />
               <div style={{ position: 'relative', display: 'inline-flex' }}>
                 <Show
@@ -258,7 +285,7 @@ export function TaskPanel(props: TaskPanelProps) {
                       </svg>
                     }
                     onClick={() => setShowPushConfirm(true)}
-                    title={t('Push to remote', '推送到远程')}
+                    title="Push to remote"
                   />
                 </Show>
                 <Show when={pushSuccess()}>
@@ -287,11 +314,20 @@ export function TaskPanel(props: TaskPanelProps) {
             <IconButton
               icon={
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M2 8a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 8Z" />
+                </svg>
+              }
+              onClick={() => collapseTask(props.task.id)}
+              title="Collapse task"
+            />
+            <IconButton
+              icon={
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
                 </svg>
               }
               onClick={() => setShowCloseConfirm(true)}
-              title={t('Close task', '关闭任务')}
+              title="Close task"
             />
           </div>
         </div>
@@ -306,8 +342,22 @@ export function TaskPanel(props: TaskPanelProps) {
       fixed: true,
       content: () => (
         <InfoBar
-          title={props.task.worktreePath}
-          onClick={() => revealItemInDir(props.task.worktreePath).catch(() => {})}
+          title={
+            store.editorCommand
+              ? `Click to open in ${store.editorCommand} · ${isMac ? 'Cmd' : 'Ctrl'}+Click to reveal in file manager`
+              : props.task.worktreePath
+          }
+          onClick={(e?: MouseEvent) => {
+            if (store.editorCommand && !(e && (e.ctrlKey || e.metaKey))) {
+              openInEditor(store.editorCommand, props.task.worktreePath).catch((err) =>
+                showNotification(
+                  `Editor failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+                ),
+              );
+            } else {
+              revealItemInDir(props.task.worktreePath).catch(() => {});
+            }
+          }}
         >
           {(() => {
             const project = getProject(props.task.projectId);
@@ -320,7 +370,7 @@ export function TaskPanel(props: TaskPanelProps) {
                       e.stopPropagation();
                       setEditingProjectId(p().id);
                     }}
-                    title={t('Project settings', '项目设置')}
+                    title="Project settings"
                     style={{
                       display: 'inline-flex',
                       'align-items': 'center',
@@ -457,27 +507,118 @@ export function TaskPanel(props: TaskPanelProps) {
                 <ScalablePanel panelId={`${props.task.id}:notes`}>
                   <div
                     class="focusable-panel"
-                    style={{ width: '100%', height: '100%' }}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      'flex-direction': 'column',
+                    }}
                     onClick={() => setTaskFocusedPanel(props.task.id, 'notes')}
                   >
-                    <textarea
-                      ref={notesRef}
-                      value={props.task.notes}
-                      onInput={(e) => updateTaskNotes(props.task.id, e.currentTarget.value)}
-                      placeholder={t('Notes...', '备注...')}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        background: theme.taskPanelBg,
-                        border: 'none',
-                        padding: '6px 8px',
-                        color: theme.fg,
-                        'font-size': sf(11),
-                        'font-family': "'JetBrains Mono', monospace",
-                        resize: 'none',
-                        outline: 'none',
-                      }}
-                    />
+                    <Show when={store.showPlans && props.task.planContent}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          'border-bottom': `1px solid ${theme.border}`,
+                          'flex-shrink': '0',
+                        }}
+                      >
+                        <button
+                          style={{
+                            padding: '2px 8px',
+                            'font-size': sf(10),
+                            background: notesTab() === 'notes' ? theme.taskPanelBg : 'transparent',
+                            color: notesTab() === 'notes' ? theme.fg : theme.fgMuted,
+                            border: 'none',
+                            'border-bottom':
+                              notesTab() === 'notes'
+                                ? `2px solid ${theme.accent}`
+                                : '2px solid transparent',
+                            cursor: 'pointer',
+                            'font-family': "'JetBrains Mono', monospace",
+                          }}
+                          onClick={() => setNotesTab('notes')}
+                        >
+                          Notes
+                        </button>
+                        <button
+                          style={{
+                            padding: '2px 8px',
+                            'font-size': sf(10),
+                            background: notesTab() === 'plan' ? theme.taskPanelBg : 'transparent',
+                            color: notesTab() === 'plan' ? theme.fg : theme.fgMuted,
+                            border: 'none',
+                            'border-bottom':
+                              notesTab() === 'plan'
+                                ? `2px solid ${theme.accent}`
+                                : '2px solid transparent',
+                            cursor: 'pointer',
+                            'font-family': "'JetBrains Mono', monospace",
+                          }}
+                          onClick={() => setNotesTab('plan')}
+                        >
+                          Plan
+                        </button>
+                        <button
+                          style={{
+                            'margin-left': 'auto',
+                            padding: '2px 6px',
+                            'font-size': sf(10),
+                            background: 'transparent',
+                            color: theme.fgMuted,
+                            border: 'none',
+                            cursor: 'pointer',
+                            'font-family': "'JetBrains Mono', monospace",
+                          }}
+                          title="Open plan fullscreen"
+                          onClick={() => setPlanFullscreen(true)}
+                        >
+                          {'⤢'}
+                        </button>
+                      </div>
+                    </Show>
+
+                    <Show
+                      when={notesTab() === 'notes' || !store.showPlans || !props.task.planContent}
+                    >
+                      <textarea
+                        ref={notesRef}
+                        value={props.task.notes}
+                        onInput={(e) => updateTaskNotes(props.task.id, e.currentTarget.value)}
+                        placeholder="Notes..."
+                        style={{
+                          width: '100%',
+                          flex: '1',
+                          background: theme.taskPanelBg,
+                          border: 'none',
+                          padding: '6px 8px',
+                          color: theme.fg,
+                          'font-size': sf(11),
+                          'font-family': "'JetBrains Mono', monospace",
+                          resize: 'none',
+                          outline: 'none',
+                        }}
+                      />
+                    </Show>
+
+                    <Show when={notesTab() === 'plan' && store.showPlans && props.task.planContent}>
+                      <div
+                        class="plan-markdown"
+                        style={{
+                          flex: '1',
+                          overflow: 'auto',
+                          padding: '6px 8px',
+                          background: theme.taskPanelBg,
+                          color: theme.fg,
+                          'font-size': sf(11),
+                          'font-family': "'JetBrains Mono', monospace",
+                        }}
+                        // eslint-disable-next-line solid/no-innerhtml -- plan files are local, written by Claude Code in the worktree
+                        innerHTML={
+                          marked.parse(props.task.planContent ?? '', { async: false }) as string
+                        }
+                      />
+                    </Show>
                   </div>
                 </ScalablePanel>
               ),
@@ -509,7 +650,7 @@ export function TaskPanel(props: TaskPanelProps) {
                         'flex-shrink': '0',
                       }}
                     >
-                      {t('Changed Files', '变更文件')}
+                      Changed Files
                     </div>
                     <div style={{ flex: '1', overflow: 'hidden' }}>
                       <ChangedFilesList
@@ -570,7 +711,7 @@ export function TaskPanel(props: TaskPanelProps) {
                     spawnShellForTask(props.task.id);
                   } else {
                     const bm = projectBookmarks()[idx - 1];
-                    if (bm) spawnShellForTask(props.task.id, bm.command);
+                    if (bm) runBookmarkInTask(props.task.id, bm.command);
                   }
                 }
               }}
@@ -592,7 +733,7 @@ export function TaskPanel(props: TaskPanelProps) {
                   spawnShellForTask(props.task.id);
                 }}
                 tabIndex={-1}
-                title={t(`Open terminal (${mod}+Shift+T)`, `打开终端 (${mod}+Shift+T)`)}
+                title={`Open terminal (${mod}+Shift+T)`}
                 style={{
                   background: theme.taskPanelBg,
                   border: `1px solid ${shellToolbarIdx() === 0 && shellToolbarFocused() ? theme.accent : theme.border}`,
@@ -608,7 +749,7 @@ export function TaskPanel(props: TaskPanelProps) {
                 }}
               >
                 <span style={{ 'font-family': 'monospace', 'font-size': sf(13) }}>&gt;_</span>
-                <span>{t('Terminal', '终端')}</span>
+                <span>Terminal</span>
               </button>
               <For each={projectBookmarks()}>
                 {(bookmark, i) => (
@@ -616,7 +757,7 @@ export function TaskPanel(props: TaskPanelProps) {
                     class="icon-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      spawnShellForTask(props.task.id, bookmark.command);
+                      runBookmarkInTask(props.task.id, bookmark.command);
                     }}
                     tabIndex={-1}
                     title={bookmark.command}
@@ -688,7 +829,7 @@ export function TaskPanel(props: TaskPanelProps) {
                             e.stopPropagation();
                             closeShell(props.task.id, shellId);
                           }}
-                          title={t('Close terminal (Ctrl+Shift+Q)', '关闭终端 (Ctrl+Shift+Q)')}
+                          title="Close terminal (Ctrl+Shift+Q)"
                           style={{
                             background: 'color-mix(in srgb, var(--island-bg) 85%, transparent)',
                             border: `1px solid ${theme.border}`,
@@ -721,12 +862,13 @@ export function TaskPanel(props: TaskPanelProps) {
                               border: `1px solid ${theme.border}`,
                             }}
                           >
-                            {t('Process exited', '进程已退出')} ({shellExits[shellId]?.exitCode ?? '?'})
+                            Process exited ({shellExits[shellId]?.exitCode ?? '?'})
                           </div>
                         </Show>
                         <TerminalView
                           taskId={props.task.id}
                           agentId={shellId}
+                          isShell
                           isFocused={
                             props.isActive && store.focusedPanel[props.task.id] === `shell:${i()}`
                           }
@@ -734,6 +876,7 @@ export function TaskPanel(props: TaskPanelProps) {
                           args={['-l']}
                           cwd={props.task.worktreePath}
                           initialCommand={initialCommand}
+                          onData={(data) => markAgentOutput(shellId, data, props.task.id)}
                           onExit={(info) =>
                             setShellExits(shellId, {
                               exitCode: info.exit_code,
@@ -782,9 +925,7 @@ export function TaskPanel(props: TaskPanelProps) {
             <InfoBar
               title={
                 props.task.lastPrompt ||
-                (props.task.initialPrompt
-                  ? t('Waiting to send prompt…', '等待发送提示词…')
-                  : t('No prompts sent yet', '尚未发送提示词'))
+                (props.task.initialPrompt ? 'Waiting to send prompt…' : 'No prompts sent yet')
               }
               onDblClick={() => {
                 if (props.task.lastPrompt && promptHandle && !promptHandle.getText())
@@ -795,8 +936,8 @@ export function TaskPanel(props: TaskPanelProps) {
                 {props.task.lastPrompt
                   ? `> ${props.task.lastPrompt}`
                   : props.task.initialPrompt
-                    ? `⏳ ${t('Waiting to send prompt…', '等待发送提示词…')}`
-                    : t('No prompts sent', '未发送提示词')}
+                    ? '⏳ Waiting to send prompt…'
+                    : 'No prompts sent'}
               </span>
             </InfoBar>
             <div style={{ flex: '1', position: 'relative', overflow: 'hidden' }}>
@@ -825,8 +966,8 @@ export function TaskPanel(props: TaskPanelProps) {
                       >
                         <span>
                           {a().signal === 'spawn_failed'
-                            ? t('Failed to start', '启动失败')
-                            : `${t('Process exited', '进程已退出')} (${a().exitCode ?? '?'})`}
+                            ? 'Failed to start'
+                            : `Process exited (${a().exitCode ?? '?'})`}
                         </span>
                         <button
                           onClick={(e) => {
@@ -842,9 +983,9 @@ export function TaskPanel(props: TaskPanelProps) {
                             cursor: 'pointer',
                             'font-size': sf(10),
                           }}
-                          >
-                            {t('Restart', '重启')}
-                          </button>
+                        >
+                          Restart
+                        </button>
                         <Show when={a().def.resume_args?.length}>
                           <button
                             onClick={(e) => {
@@ -861,7 +1002,7 @@ export function TaskPanel(props: TaskPanelProps) {
                               'font-size': sf(10),
                             }}
                           >
-                            {t('Resume', '恢复')}
+                            Resume
                           </button>
                         </Show>
                       </div>
@@ -966,13 +1107,11 @@ export function TaskPanel(props: TaskPanelProps) {
           }}
         >
           <Show when={props.task.closingStatus === 'closing'}>
-            <div style={{ 'font-size': '13px', color: theme.fgMuted }}>
-              {t('Closing task...', '正在关闭任务...')}
-            </div>
+            <div style={{ 'font-size': '13px', color: theme.fgMuted }}>Closing task...</div>
           </Show>
           <Show when={props.task.closingStatus === 'error'}>
             <div style={{ 'font-size': '13px', color: theme.error, 'font-weight': '600' }}>
-              {t('Close failed', '关闭失败')}
+              Close failed
             </div>
             <div
               style={{
@@ -999,9 +1138,9 @@ export function TaskPanel(props: TaskPanelProps) {
                 cursor: 'pointer',
                 'font-size': '12px',
               }}
-              >
-                {t('Retry', '重试')}
-              </button>
+            >
+              Retry
+            </button>
           </Show>
         </div>
       </Show>
@@ -1017,20 +1156,27 @@ export function TaskPanel(props: TaskPanelProps) {
           promptInput(),
         ]}
       />
-      <TaskDialogs
+      <CloseTaskDialog
+        open={showCloseConfirm()}
         task={props.task}
-        showCloseConfirm={showCloseConfirm()}
-        onCloseConfirmDone={() => setShowCloseConfirm(false)}
-        showMergeConfirm={showMergeConfirm()}
+        onDone={() => setShowCloseConfirm(false)}
+      />
+      <MergeDialog
+        open={showMergeConfirm()}
+        task={props.task}
         initialCleanup={getProject(props.task.projectId)?.deleteBranchOnClose ?? true}
-        onMergeConfirmDone={() => setShowMergeConfirm(false)}
-        showPushConfirm={showPushConfirm()}
-        onPushStart={() => {
+        onDone={() => setShowMergeConfirm(false)}
+        onDiffFileClick={setDiffFile}
+      />
+      <PushDialog
+        open={showPushConfirm()}
+        task={props.task}
+        onStart={() => {
           setPushing(true);
           setPushSuccess(false);
           clearTimeout(pushSuccessTimer);
         }}
-        onPushConfirmDone={(success) => {
+        onDone={(success) => {
           setShowPushConfirm(false);
           setPushing(false);
           if (success) {
@@ -1038,11 +1184,29 @@ export function TaskPanel(props: TaskPanelProps) {
             pushSuccessTimer = setTimeout(() => setPushSuccess(false), 3000);
           }
         }}
-        diffFile={diffFile()}
-        onDiffClose={() => setDiffFile(null)}
-        onDiffFileClick={setDiffFile}
+      />
+      <DiffViewerDialog
+        file={diffFile()}
+        worktreePath={props.task.worktreePath}
+        projectRoot={getProject(props.task.projectId)?.path}
+        branchName={props.task.branchName}
+        onClose={() => setDiffFile(null)}
       />
       <EditProjectDialog project={editingProject()} onClose={() => setEditingProjectId(null)} />
+      <Dialog open={planFullscreen()} onClose={() => setPlanFullscreen(false)} width="800px">
+        <div
+          class="plan-markdown"
+          style={{
+            color: theme.fg,
+            'font-size': '15px',
+            'font-family': "'JetBrains Mono', monospace",
+            'max-height': '70vh',
+            overflow: 'auto',
+          }}
+          // eslint-disable-next-line solid/no-innerhtml -- plan files are local, written by Claude Code in the worktree
+          innerHTML={marked.parse(props.task.planContent ?? '', { async: false }) as string}
+        />
+      </Dialog>
     </div>
   );
 }

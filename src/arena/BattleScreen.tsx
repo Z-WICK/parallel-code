@@ -2,7 +2,8 @@ import { For, Show, createSignal, createEffect, onCleanup } from 'solid-js';
 import { TerminalView } from '../components/TerminalView';
 import { ChangedFilesList } from '../components/ChangedFilesList';
 import { DiffViewerDialog } from '../components/DiffViewerDialog';
-import { invoke } from '../lib/ipc';
+import { fireAndForget } from '../lib/ipc';
+import { showNotification } from '../store/notification';
 import { IPC } from '../../electron/ipc/channels';
 import {
   arenaStore,
@@ -23,9 +24,16 @@ function formatElapsed(ms: number): string {
   return `${mins}m ${secs}s`;
 }
 
-/** Replace {prompt} in the command template with the escaped prompt */
+/** Replace {prompt} in the command template with the escaped prompt.
+ *  The template uses double-quote context, so escape characters meaningful
+ *  inside double quotes: ", $, `, and \. Note: ! (history expansion) is a
+ *  bash-only feature and not special in POSIX /bin/sh double quotes. */
 function buildCommand(template: string, prompt: string): { command: string; args: string[] } {
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const escapedPrompt = prompt
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, '\\$')
+    .replace(/`/g, '\\`');
   const fullCommand = template.replace(/\{prompt\}/g, escapedPrompt);
   return { command: '/bin/sh', args: ['-c', fullCommand] };
 }
@@ -68,7 +76,9 @@ export function BattleScreen() {
   });
 
   function handleStop(agentId: string) {
-    void invoke(IPC.KillAgent, { agentId });
+    fireAndForget(IPC.KillAgent, { agentId }, () => {
+      showNotification('Failed to stop agent');
+    });
   }
 
   function handleFileClick(worktreePath: string, file: ChangedFile) {

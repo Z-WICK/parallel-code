@@ -88,8 +88,16 @@ export function setAutoTrustFolders(autoTrustFolders: boolean): void {
   setStore('autoTrustFolders', autoTrustFolders);
 }
 
+export function setShowPlans(showPlans: boolean): void {
+  setStore('showPlans', showPlans);
+}
+
 export function setInactiveColumnOpacity(opacity: number): void {
   setStore('inactiveColumnOpacity', Math.round(Math.max(0.3, Math.min(1.0, opacity)) * 100) / 100);
+}
+
+export function setEditorCommand(command: string): void {
+  setStore('editorCommand', command);
 }
 
 export function toggleArena(show?: boolean): void {

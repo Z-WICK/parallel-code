@@ -110,18 +110,18 @@ body {
 html[data-look='classic'] {
   --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --bg: #000000;
-  --bg-elevated: #1a1b1d;
-  --bg-input: #1a1b1d;
-  --bg-hover: #252629;
-  --bg-selected: #2a3a6e;
-  --bg-selected-subtle: #2a3a6e33;
-  --border: #222426;
-  --border-subtle: #1a1b1d;
+  --bg: #0c0c0d;
+  --bg-elevated: #222326;
+  --bg-input: #222326;
+  --bg-hover: #2e3033;
+  --bg-selected: #344580;
+  --bg-selected-subtle: #34458033;
+  --border: #2c2e31;
+  --border-subtle: #222326;
   --border-focus: #4c6fff;
-  --fg: #bcbec4;
-  --fg-muted: #787a80;
-  --fg-subtle: #5a5d63;
+  --fg: #cccdd2;
+  --fg-muted: #8b8d93;
+  --fg-subtle: #6d7076;
   --accent: #4c6fff;
   --accent-hover: #3a5bff;
   --accent-text: #ffffff;
@@ -129,11 +129,11 @@ html[data-look='classic'] {
   --success: #0dbc79;
   --error: #f75464;
   --warning: #f2c55c;
-  --island-bg: #111213;
-  --island-border: #222426;
+  --island-bg: #19191c;
+  --island-border: #2c2e31;
   --island-radius: 10px;
-  --task-container-bg: #111213;
-  --task-panel-bg: #1a1b1d;
+  --task-container-bg: #19191c;
+  --task-panel-bg: #222326;
   --shadow-soft: 0 0 0 rgba(0, 0, 0, 0);
   --shadow-pop: 0 0 8px rgba(99, 102, 241, 0.5);
 }
@@ -224,18 +224,18 @@ html[data-look='ember'] {
 }
 
 html[data-look='glacier'] {
-  --bg: radial-gradient(140% 120% at 0% 0%, #1a2730 0%, #0f171e 52%, #090f14 100%);
-  --bg-elevated: #151e26;
-  --bg-input: #121a22;
-  --bg-hover: #20303d;
-  --bg-selected: #193f47;
-  --bg-selected-subtle: #193f4740;
-  --border: #2a404e;
-  --border-subtle: #1f303b;
+  --bg: radial-gradient(140% 120% at 0% 0%, #223340 0%, #17212b 52%, #111920 100%);
+  --bg-elevated: #1d2833;
+  --bg-input: #1a232d;
+  --bg-hover: #293b4a;
+  --bg-selected: #224c55;
+  --bg-selected-subtle: #224c5540;
+  --border: #344c5c;
+  --border-subtle: #283b48;
   --border-focus: #50e2d3;
-  --fg: #dce9f0;
-  --fg-muted: #abc2cd;
-  --fg-subtle: #7d9aa8;
+  --fg: #e5eff5;
+  --fg-muted: #bed2dc;
+  --fg-subtle: #92aebb;
   --accent: #50e2d3;
   --accent-hover: #76ece0;
   --accent-text: #041413;
@@ -243,10 +243,10 @@ html[data-look='glacier'] {
   --success: #4ed59f;
   --error: #ff6f88;
   --warning: #ffd57d;
-  --island-bg: #131b23;
-  --island-border: #2a404e;
-  --task-container-bg: #0e151c;
-  --task-panel-bg: #151e26;
+  --island-bg: #1b242e;
+  --island-border: #344c5c;
+  --task-container-bg: #162028;
+  --task-panel-bg: #1d2833;
 }
 
 html[data-look='minimal'] {
@@ -479,10 +479,6 @@ textarea::placeholder {
   font: inherit;
   padding: 0;
   cursor: pointer;
-}
-
-.project-select selectedcontent .project-color-dot {
-  margin-right: 4px;
 }
 
 .project-color-dot {
@@ -789,28 +785,6 @@ body.dragging-task * {
   letter-spacing: 0.01em;
 }
 
-.diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root {
-  --diff-border--: var(--border);
-  --diff-add-content--: rgba(47, 209, 152, 0.09);
-  --diff-del-content--: rgba(255, 95, 115, 0.09);
-  --diff-add-lineNumber--: rgba(47, 209, 152, 0.13);
-  --diff-del-lineNumber--: rgba(255, 95, 115, 0.13);
-  --diff-add-content-highlight--: rgba(47, 209, 152, 0.24);
-  --diff-del-content-highlight--: rgba(255, 95, 115, 0.24);
-  --diff-plain-content--: var(--island-bg);
-  --diff-expand-content--: var(--bg-elevated);
-  --diff-plain-lineNumber--: var(--bg-elevated);
-  --diff-expand-lineNumber--: var(--bg-elevated);
-  --diff-plain-lineNumber-color--: var(--fg-subtle);
-  --diff-expand-lineNumber-color--: var(--fg-subtle);
-  --diff-hunk-content--: color-mix(in srgb, var(--accent) 10%, transparent);
-  --diff-hunk-lineNumber--: color-mix(in srgb, var(--accent) 15%, transparent);
-  --diff-hunk-lineNumber-hover--: var(--accent);
-  --diff-hunk-content-color--: var(--fg-muted);
-  --diff-empty-content--: var(--bg-elevated);
-  font-family: var(--font-mono);
-}
-
 .shell-terminal-close {
   position: absolute;
   top: 6px;
@@ -848,6 +822,74 @@ body.dragging-task * {
 
 .prompt-send-btn:active:not(:disabled) {
   transform: translateY(0);
+}
+
+.slash-command-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 95%, transparent);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+  transform: translateY(calc(-100% - 6px));
+  z-index: 9999;
+}
+
+.slash-command-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+  color: var(--fg);
+}
+
+.slash-command-item:hover,
+.slash-command-item.active {
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-hover));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.slash-command-item-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.slash-command-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.slash-command-source {
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.slash-command-desc {
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.35;
 }
 
 .settings-theme-grid {
@@ -1112,4 +1154,89 @@ body.dragging-task * {
   width: 8px;
   height: 8px;
   cursor: nesw-resize;
+}
+
+/* Monaco diff: hidden unchanged regions — make the collapse bar obvious and clickable */
+.monaco-editor .diff-hidden-lines .center {
+  cursor: pointer;
+  height: 28px;
+  line-height: 28px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  border-radius: 4px;
+  transition: filter 0.15s ease;
+}
+
+.monaco-editor .diff-hidden-lines .center:hover {
+  filter: brightness(1.3);
+}
+
+/* Let the label text also be single-clickable (Monaco defaults to dblclick) */
+.monaco-editor .diff-hidden-lines .center span {
+  pointer-events: none;
+}
+
+/* Hide the unfold icon — the whole bar is clickable now */
+.monaco-editor .diff-hidden-lines .center > div:first-child {
+  width: 0 !important;
+  overflow: hidden;
+}
+
+/* Hide the tiny drag handles — the center bar handles expansion */
+.monaco-editor .diff-hidden-lines .top,
+.monaco-editor .diff-hidden-lines .bottom {
+  display: none;
+}
+
+/* Plan markdown rendering */
+.plan-markdown h1,
+.plan-markdown h2,
+.plan-markdown h3 {
+  margin: 0.5em 0 0.3em;
+  font-weight: 600;
+}
+.plan-markdown h1 {
+  font-size: 1.2em;
+}
+.plan-markdown h2 {
+  font-size: 1.1em;
+}
+.plan-markdown h3 {
+  font-size: 1em;
+}
+.plan-markdown p {
+  margin: 0.3em 0;
+}
+.plan-markdown ul,
+.plan-markdown ol {
+  margin: 0.3em 0;
+  padding-left: 1.5em;
+}
+.plan-markdown li {
+  margin: 0.1em 0;
+}
+.plan-markdown code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.plan-markdown pre {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.5em;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0.3em 0;
+}
+.plan-markdown pre code {
+  background: none;
+  padding: 0;
+}
+.plan-markdown input[type='checkbox'] {
+  margin-right: 0.4em;
+}
+.plan-markdown hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 0.5em 0;
 }

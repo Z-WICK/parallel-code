@@ -15,9 +15,6 @@ export function ProjectSelect(props: ProjectSelectProps) {
       value={props.value ?? ''}
       onChange={(e) => props.onChange(e.currentTarget.value || null)}
     >
-      <button type="button">
-        <selectedcontent />
-      </button>
       <Show when={props.placeholder}>
         <option value="" disabled hidden>
           {props.placeholder}
@@ -26,10 +23,7 @@ export function ProjectSelect(props: ProjectSelectProps) {
       <For each={store.projects}>
         {(project) => (
           <option value={project.id}>
-            <span class="project-color-dot" style={{ background: project.color }} />
-            <span>
-              {project.name} — {project.path}
-            </span>
+            {project.name} — {project.path}
           </option>
         )}
       </For>

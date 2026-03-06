@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config';
+import solid from 'vite-plugin-solid';
 
 export default defineConfig({
+  plugins: [solid()],
   test: {
-    include: ['src/**/*.test.ts', 'electron/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'electron/**/*.test.ts'],
   },
 });

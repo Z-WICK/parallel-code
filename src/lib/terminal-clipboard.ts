@@ -10,7 +10,7 @@ export interface TerminalClipboardDeps {
 }
 
 export interface ClipboardImageItem {
-  types: string[];
+  types: readonly string[];
   getType: (type: string) => Promise<Blob>;
 }
 

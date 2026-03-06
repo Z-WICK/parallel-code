@@ -9,6 +9,7 @@ interface PtySession {
   channelId: string;
   taskId: string;
   agentId: string;
+  isShell: boolean;
   flushTimer: ReturnType<typeof setTimeout> | null;
   subscribers: Set<(encoded: string) => void>;
   scrollback: RingBuffer;
@@ -86,6 +87,7 @@ export function spawnAgent(
     env: Record<string, string>;
     cols: number;
     rows: number;
+    isShell?: boolean;
     onOutput: { __CHANNEL_ID__: string };
   },
 ): void {
@@ -101,6 +103,15 @@ export function spawnAgent(
   }
 
   validateCommand(command);
+
+  // Kill any existing session with the same agentId to prevent PTY leaks
+  const existing = sessions.get(args.agentId);
+  if (existing) {
+    if (existing.flushTimer) clearTimeout(existing.flushTimer);
+    existing.subscribers.clear();
+    existing.proc.kill();
+    sessions.delete(args.agentId);
+  }
 
   const filteredEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
@@ -150,6 +161,7 @@ export function spawnAgent(
     channelId,
     taskId: args.taskId,
     agentId: args.agentId,
+    isShell: args.isShell ?? false,
     flushTimer: null,
     subscribers: new Set(),
     scrollback: new RingBuffer(),
@@ -211,6 +223,10 @@ export function spawnAgent(
   });
 
   proc.onExit(({ exitCode, signal }) => {
+    // If this session was replaced by a new spawn with the same agentId,
+    // skip cleanup — the new session owns the map entry now.
+    if (sessions.get(args.agentId) !== session) return;
+
     // Flush any remaining buffered data
     flush();
 
@@ -318,9 +334,11 @@ export function getActiveAgentIds(): string[] {
 }
 
 /** Return metadata for a specific agent, or null if not found. */
-export function getAgentMeta(agentId: string): { taskId: string; agentId: string } | null {
+export function getAgentMeta(
+  agentId: string,
+): { taskId: string; agentId: string; isShell: boolean } | null {
   const s = sessions.get(agentId);
-  return s ? { taskId: s.taskId, agentId: s.agentId } : null;
+  return s ? { taskId: s.taskId, agentId: s.agentId, isShell: s.isShell } : null;
 }
 
 /** Return the current column width of an agent's PTY. */

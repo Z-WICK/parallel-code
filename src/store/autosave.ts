@@ -11,6 +11,7 @@ function persistedSnapshot(): string {
     lastProjectId: store.lastProjectId,
     lastAgentId: store.lastAgentId,
     taskOrder: store.taskOrder,
+    collapsedTaskOrder: store.collapsedTaskOrder,
     activeTaskId: store.activeTaskId,
     sidebarVisible: store.sidebarVisible,
     fontScales: store.fontScales,
@@ -24,8 +25,13 @@ function persistedSnapshot(): string {
     themePreset: store.themePreset,
     windowState: store.windowState,
     autoTrustFolders: store.autoTrustFolders,
+    showPlans: store.showPlans,
+    inactiveColumnOpacity: store.inactiveColumnOpacity,
+    editorCommand: store.editorCommand,
+    customAgents: store.customAgents,
+    customSlashCommands: store.customSlashCommands,
     tasks: Object.fromEntries(
-      store.taskOrder
+      [...store.taskOrder, ...store.collapsedTaskOrder]
         .filter((id) => store.tasks[id])
         .map((id) => {
           const t = store.tasks[id];
@@ -37,6 +43,7 @@ function persistedSnapshot(): string {
               name: t.name,
               directMode: t.directMode,
               savedInitialPrompt: t.savedInitialPrompt,
+              collapsed: t.collapsed,
             },
           ];
         }),

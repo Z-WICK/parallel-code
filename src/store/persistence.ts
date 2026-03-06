@@ -12,6 +12,7 @@ import type {
   PersistedTask,
   PersistedWindowState,
   Project,
+  SlashCommand,
 } from './types';
 import type { AgentDef } from '../ipc/types';
 import { DEFAULT_TERMINAL_FONT, isTerminalFont } from '../lib/fonts';
@@ -25,6 +26,7 @@ export async function saveState(): Promise<void> {
     lastProjectId: store.lastProjectId,
     lastAgentId: store.lastAgentId,
     taskOrder: [...store.taskOrder],
+    collapsedTaskOrder: [...store.collapsedTaskOrder],
     tasks: {},
     activeTaskId: store.activeTaskId,
     sidebarVisible: store.sidebarVisible,
@@ -40,8 +42,12 @@ export async function saveState(): Promise<void> {
     locale: store.locale,
     windowState: store.windowState ? { ...store.windowState } : undefined,
     autoTrustFolders: store.autoTrustFolders,
+    showPlans: store.showPlans,
     inactiveColumnOpacity: store.inactiveColumnOpacity,
+    editorCommand: store.editorCommand || undefined,
     customAgents: store.customAgents.length > 0 ? [...store.customAgents] : undefined,
+    customSlashCommands:
+      store.customSlashCommands.length > 0 ? [...store.customSlashCommands] : undefined,
   };
 
   for (const taskId of store.taskOrder) {
@@ -64,6 +70,30 @@ export async function saveState(): Promise<void> {
       skipPermissions: task.skipPermissions,
       githubUrl: task.githubUrl,
       savedInitialPrompt: task.savedInitialPrompt,
+    };
+  }
+
+  for (const taskId of store.collapsedTaskOrder) {
+    const task = store.tasks[taskId];
+    if (!task) continue;
+
+    const firstAgent = task.agentIds[0] ? store.agents[task.agentIds[0]] : null;
+
+    persisted.tasks[taskId] = {
+      id: task.id,
+      name: task.name,
+      projectId: task.projectId,
+      branchName: task.branchName,
+      worktreePath: task.worktreePath,
+      notes: task.notes,
+      lastPrompt: task.lastPrompt,
+      shellCount: task.shellAgentIds.length,
+      agentDef: firstAgent?.def ?? task.savedAgentDef ?? null,
+      directMode: task.directMode,
+      skipPermissions: task.skipPermissions,
+      githubUrl: task.githubUrl,
+      savedInitialPrompt: task.savedInitialPrompt,
+      collapsed: true,
     };
   }
 
@@ -121,15 +151,60 @@ function parsePersistedWindowState(v: unknown): PersistedWindowState | null {
   };
 }
 
+function parseCustomSlashCommands(v: unknown): SlashCommand[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter(
+      (item: unknown): item is Omit<SlashCommand, 'source'> & { source?: SlashCommand['source'] } =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as SlashCommand).id === 'string' &&
+        typeof (item as SlashCommand).name === 'string' &&
+        /^\/[a-zA-Z0-9][a-zA-Z0-9:_.-]*$/.test((item as SlashCommand).name) &&
+        typeof (item as SlashCommand).description === 'string' &&
+        ((item as SlashCommand).template === undefined ||
+          typeof (item as SlashCommand).template === 'string') &&
+        ((item as { source?: unknown }).source === undefined ||
+          (item as { source?: unknown }).source === 'custom'),
+    )
+    .map(
+      (item): SlashCommand => ({
+        id: item.id,
+        name: item.name,
+        source: 'custom',
+        description: item.description.replace(/[\x00-\x1F\x7F]/g, '').trim(),
+        template: item.template?.replace(/[\x00-\x1F\x7F]/g, '').trim() || undefined,
+      }),
+    );
+}
+
 interface LegacyPersistedState {
   projectRoot?: string;
   projects?: Project[];
   lastProjectId?: string | null;
   lastAgentId?: string | null;
   taskOrder: string[];
+  collapsedTaskOrder?: string[];
   tasks: Record<string, PersistedTask & { projectId?: string }>;
   activeTaskId: string | null;
   sidebarVisible: boolean;
+  // Fields that may be present in newer state files (validated at runtime)
+  fontScales?: unknown;
+  panelSizes?: unknown;
+  globalScale?: unknown;
+  completedTaskDate?: unknown;
+  completedTaskCount?: unknown;
+  mergedLinesAdded?: unknown;
+  mergedLinesRemoved?: unknown;
+  terminalFont?: unknown;
+  themePreset?: unknown;
+  windowState?: unknown;
+  autoTrustFolders?: unknown;
+  showPlans?: unknown;
+  inactiveColumnOpacity?: unknown;
+  editorCommand?: unknown;
+  customAgents?: unknown;
+  terminals?: unknown;
 }
 
 export async function loadState(): Promise<void> {
@@ -192,13 +267,12 @@ export async function loadState(): Promise<void> {
       s.taskOrder = raw.taskOrder;
       s.activeTaskId = raw.activeTaskId;
       s.sidebarVisible = raw.sidebarVisible;
-      const rawAny = raw as unknown as Record<string, unknown>;
-      s.fontScales = isStringNumberRecord(rawAny.fontScales) ? rawAny.fontScales : {};
-      s.panelSizes = isStringNumberRecord(rawAny.panelSizes) ? rawAny.panelSizes : {};
-      s.globalScale = typeof rawAny.globalScale === 'number' ? rawAny.globalScale : 1;
+      s.fontScales = isStringNumberRecord(raw.fontScales) ? raw.fontScales : {};
+      s.panelSizes = isStringNumberRecord(raw.panelSizes) ? raw.panelSizes : {};
+      s.globalScale = typeof raw.globalScale === 'number' ? raw.globalScale : 1;
       const completedTaskDate =
-        typeof rawAny.completedTaskDate === 'string' ? rawAny.completedTaskDate : today;
-      const completedTaskCountRaw = rawAny.completedTaskCount;
+        typeof raw.completedTaskDate === 'string' ? raw.completedTaskDate : today;
+      const completedTaskCountRaw = raw.completedTaskCount;
       const completedTaskCount =
         typeof completedTaskCountRaw === 'number' && Number.isFinite(completedTaskCountRaw)
           ? Math.max(0, Math.floor(completedTaskCountRaw))
@@ -210,8 +284,8 @@ export async function loadState(): Promise<void> {
         s.completedTaskDate = today;
         s.completedTaskCount = 0;
       }
-      const mergedLinesAddedRaw = rawAny.mergedLinesAdded;
-      const mergedLinesRemovedRaw = rawAny.mergedLinesRemoved;
+      const mergedLinesAddedRaw = raw.mergedLinesAdded;
+      const mergedLinesRemovedRaw = raw.mergedLinesRemoved;
       s.mergedLinesAdded =
         typeof mergedLinesAddedRaw === 'number' && Number.isFinite(mergedLinesAddedRaw)
           ? Math.max(0, Math.floor(mergedLinesAddedRaw))
@@ -220,15 +294,14 @@ export async function loadState(): Promise<void> {
         typeof mergedLinesRemovedRaw === 'number' && Number.isFinite(mergedLinesRemovedRaw)
           ? Math.max(0, Math.floor(mergedLinesRemovedRaw))
           : 0;
-      s.terminalFont = isTerminalFont(rawAny.terminalFont)
-        ? rawAny.terminalFont
-        : DEFAULT_TERMINAL_FONT;
-      s.themePreset = isLookPreset(rawAny.themePreset) ? rawAny.themePreset : 'minimal';
-      s.locale = isAppLocale(rawAny.locale) ? rawAny.locale : getPreferredLocale();
-      s.windowState = parsePersistedWindowState(rawAny.windowState);
-      s.autoTrustFolders =
-        typeof rawAny.autoTrustFolders === 'boolean' ? rawAny.autoTrustFolders : false;
-      const rawOpacity = rawAny.inactiveColumnOpacity;
+      s.terminalFont = isTerminalFont(raw.terminalFont) ? raw.terminalFont : DEFAULT_TERMINAL_FONT;
+      s.themePreset = isLookPreset(raw.themePreset) ? raw.themePreset : 'minimal';
+      const localeValue = (raw as unknown as Record<string, unknown>).locale;
+      s.locale = isAppLocale(localeValue) ? localeValue : getPreferredLocale();
+      s.windowState = parsePersistedWindowState(raw.windowState);
+      s.autoTrustFolders = typeof raw.autoTrustFolders === 'boolean' ? raw.autoTrustFolders : false;
+      s.showPlans = typeof raw.showPlans === 'boolean' ? raw.showPlans : true;
+      const rawOpacity = raw.inactiveColumnOpacity;
       s.inactiveColumnOpacity =
         typeof rawOpacity === 'number' &&
         Number.isFinite(rawOpacity) &&
@@ -237,10 +310,12 @@ export async function loadState(): Promise<void> {
           ? Math.round(rawOpacity * 100) / 100
           : 0.6;
 
+      const rawEditorCommand = raw.editorCommand;
+      s.editorCommand = typeof rawEditorCommand === 'string' ? rawEditorCommand.trim() : '';
+
       // Restore custom agents
-      const rawCustomAgents = rawAny.customAgents;
-      if (Array.isArray(rawCustomAgents)) {
-        s.customAgents = rawCustomAgents.filter(
+      if (Array.isArray(raw.customAgents)) {
+        s.customAgents = raw.customAgents.filter(
           (a: unknown): a is AgentDef =>
             typeof a === 'object' &&
             a !== null &&
@@ -249,6 +324,10 @@ export async function loadState(): Promise<void> {
             typeof (a as AgentDef).command === 'string',
         );
       }
+
+      s.customSlashCommands = parseCustomSlashCommands(
+        (raw as unknown as Record<string, unknown>).customSlashCommands,
+      );
 
       // Make custom agents findable during task restoration
       for (const ca of s.customAgents) {
@@ -315,7 +394,7 @@ export async function loadState(): Promise<void> {
       }
 
       // Restore terminals
-      const rawTerminals = (rawAny.terminals ?? {}) as Record<string, { id: string; name: string }>;
+      const rawTerminals = (raw.terminals ?? {}) as Record<string, { id: string; name: string }>;
       for (const termId of raw.taskOrder) {
         const pt = rawTerminals[termId];
         if (!pt) continue;
@@ -325,6 +404,49 @@ export async function loadState(): Promise<void> {
 
       // Remove orphaned entries from taskOrder
       s.taskOrder = s.taskOrder.filter((id) => s.tasks[id] || s.terminals[id]);
+
+      // Restore collapsed tasks
+      const collapsedOrder = raw.collapsedTaskOrder ?? [];
+      for (const taskId of collapsedOrder) {
+        const pt = raw.tasks[taskId];
+        if (!pt || !pt.collapsed) continue;
+
+        // Enrich agentDef with fresh defaults
+        const agentDef = pt.agentDef;
+        if (agentDef) {
+          const fresh = s.availableAgents.find((a) => a.id === agentDef.id);
+          if (fresh) {
+            if (!agentDef.resume_args) agentDef.resume_args = fresh.resume_args;
+            if (!agentDef.skip_permissions_args)
+              agentDef.skip_permissions_args = fresh.skip_permissions_args;
+          }
+        }
+
+        const task: Task = {
+          id: pt.id,
+          name: pt.name,
+          projectId: pt.projectId ?? '',
+          branchName: pt.branchName,
+          worktreePath: pt.worktreePath,
+          agentIds: [],
+          shellAgentIds: [],
+          notes: pt.notes,
+          lastPrompt: pt.lastPrompt,
+          directMode: pt.directMode,
+          skipPermissions: pt.skipPermissions === true,
+          githubUrl: pt.githubUrl,
+          savedInitialPrompt: pt.savedInitialPrompt,
+          collapsed: true,
+          savedAgentDef: agentDef ?? undefined,
+        };
+
+        s.tasks[taskId] = task;
+      }
+      s.collapsedTaskOrder = collapsedOrder.filter((id) => s.tasks[id]);
+
+      // Defensive: ensure no task appears in both arrays (corrupted state)
+      const activeSet = new Set(s.taskOrder);
+      s.collapsedTaskOrder = s.collapsedTaskOrder.filter((id) => !activeSet.has(id));
 
       // Set activeAgentId from the active task
       if (s.activeTaskId && s.tasks[s.activeTaskId]) {

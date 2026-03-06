@@ -17,6 +17,7 @@ import {
   store,
   loadAgents,
   loadState,
+  loadCliSlashCommands,
   saveState,
   toggleNewTaskDialog,
   toggleSidebar,
@@ -41,6 +42,8 @@ import {
   createTerminal,
   closeTerminal,
   setNewTaskDropUrl,
+  validateProjectPaths,
+  setPlanContent,
 } from './store/store';
 import { isGitHubUrl } from './lib/github-url';
 import type { PersistedWindowState } from './store/types';
@@ -289,10 +292,20 @@ function App() {
 
     await loadAgents();
     await loadState();
+    void loadCliSlashCommands();
+    await validateProjectPaths();
     await restoreWindowState();
     await captureWindowState();
     setupAutosave();
     startTaskStatusPolling();
+
+    // Listen for plan content pushed from backend plan watcher
+    const offPlanContent = window.electron.ipcRenderer.on(IPC.PlanContent, (data: unknown) => {
+      const msg = data as { taskId: string; content: string | null; fileName: string | null };
+      if (msg.taskId && store.tasks[msg.taskId]) {
+        setPlanContent(msg.taskId, msg.content, msg.fileName);
+      }
+    });
 
     const handlePaste = (e: ClipboardEvent) => {
       if (store.showNewTaskDialog || store.showHelpDialog || store.showSettingsDialog) return;
@@ -555,6 +568,7 @@ function App() {
       unlistenCloseRequested();
       cleanupShortcuts();
       stopTaskStatusPolling();
+      offPlanContent();
       unlistenFocusChanged?.();
       unlistenResized?.();
       unlistenMoved?.();

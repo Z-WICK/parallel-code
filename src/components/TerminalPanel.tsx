@@ -144,6 +144,7 @@ export function TerminalPanel(props: TerminalPanelProps) {
           <TerminalView
             taskId={props.terminal.id}
             agentId={props.terminal.agentId}
+            isShell
             isFocused={props.isActive && store.focusedPanel[props.terminal.id] === 'terminal'}
             command=""
             args={['-l']}

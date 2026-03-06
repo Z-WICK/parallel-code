@@ -14,6 +14,7 @@ const ALLOWED_CHANNELS = new Set([
   'count_running_agents',
   'kill_all_agents',
   'list_agents',
+  'list_claude_commands',
   // Task
   'create_task',
   'delete_task',
@@ -62,6 +63,7 @@ const ALLOWED_CHANNELS = new Set([
   '__shell_reveal',
   '__shell_open_file',
   'save_clipboard_image',
+  '__shell_open_in_editor',
   // Arena
   'save_arena_data',
   'load_arena_data',
@@ -72,6 +74,8 @@ const ALLOWED_CHANNELS = new Set([
   'start_remote_server',
   'stop_remote_server',
   'get_remote_status',
+  // Plan
+  'plan_content',
 ]);
 
 function isAllowedChannel(channel) {

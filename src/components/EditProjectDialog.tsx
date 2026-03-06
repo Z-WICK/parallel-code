@@ -1,9 +1,14 @@
 import { createSignal, createEffect, For, Show } from 'solid-js';
 import { Dialog } from './Dialog';
-import { store, updateProject, PASTEL_HUES } from '../store/store';
+import {
+  updateProject,
+  PASTEL_HUES,
+  isProjectMissing,
+  relinkProject,
+  removeProjectWithTasks,
+} from '../store/store';
 import { sanitizeBranchPrefix, toBranchName } from '../lib/branch-name';
 import { theme } from '../lib/theme';
-import { localize } from '../lib/i18n';
 import type { Project, TerminalBookmark } from '../store/types';
 
 interface EditProjectDialogProps {
@@ -17,7 +22,6 @@ function hueFromColor(color: string): number {
 }
 
 export function EditProjectDialog(props: EditProjectDialogProps) {
-  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [name, setName] = createSignal('');
   const [selectedHue, setSelectedHue] = createSignal(0);
   const [branchPrefix, setBranchPrefix] = createSignal('task');
@@ -91,19 +95,104 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 'font-weight': '600',
               }}
             >
-              {t('Edit Project', '编辑项目')}
+              Edit Project
             </h2>
 
-            {/* Path (read-only) */}
+            {/* Path */}
             <div
               style={{
-                'font-size': '12px',
-                color: theme.fgSubtle,
-                'font-family': "'JetBrains Mono', monospace",
+                display: 'flex',
+                'align-items': 'center',
+                gap: '8px',
               }}
             >
-              {project().path}
+              <div
+                style={{
+                  'font-size': '12px',
+                  color: theme.fgSubtle,
+                  'font-family': "'JetBrains Mono', monospace",
+                  flex: '1',
+                  'min-width': '0',
+                  overflow: 'hidden',
+                  'text-overflow': 'ellipsis',
+                  'white-space': 'nowrap',
+                }}
+              >
+                {project().path}
+              </div>
+              <button
+                type="button"
+                onClick={() => relinkProject(project().id)}
+                style={{
+                  padding: '3px 10px',
+                  background: theme.bgInput,
+                  border: `1px solid ${theme.border}`,
+                  'border-radius': '6px',
+                  color: theme.fgMuted,
+                  cursor: 'pointer',
+                  'font-size': '11px',
+                  'flex-shrink': '0',
+                }}
+              >
+                Change
+              </button>
             </div>
+
+            <Show when={isProjectMissing(project().id)}>
+              <div
+                style={{
+                  display: 'flex',
+                  'align-items': 'center',
+                  gap: '10px',
+                  padding: '10px 14px',
+                  'border-radius': '8px',
+                  background: `color-mix(in srgb, ${theme.warning} 10%, transparent)`,
+                  border: `1px solid color-mix(in srgb, ${theme.warning} 30%, transparent)`,
+                  color: theme.warning,
+                  'font-size': '12px',
+                }}
+              >
+                <span style={{ flex: '1' }}>This folder no longer exists.</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await relinkProject(project().id);
+                    if (ok) props.onClose();
+                  }}
+                  style={{
+                    padding: '5px 12px',
+                    background: theme.bgInput,
+                    border: `1px solid ${theme.border}`,
+                    'border-radius': '6px',
+                    color: theme.fg,
+                    cursor: 'pointer',
+                    'font-size': '12px',
+                    'flex-shrink': '0',
+                  }}
+                >
+                  Re-link
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await removeProjectWithTasks(project().id);
+                    props.onClose();
+                  }}
+                  style={{
+                    padding: '5px 12px',
+                    background: 'transparent',
+                    border: `1px solid color-mix(in srgb, ${theme.error} 40%, transparent)`,
+                    'border-radius': '6px',
+                    color: theme.error,
+                    cursor: 'pointer',
+                    'font-size': '12px',
+                    'flex-shrink': '0',
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            </Show>
 
             {/* Name */}
             <div style={{ display: 'flex', 'flex-direction': 'column', gap: '8px' }}>
@@ -115,7 +204,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                {t('Name', '名称')}
+                Name
               </label>
               <input
                 ref={nameRef}
@@ -148,7 +237,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                {t('Branch prefix', '分支前缀')}
+                Branch prefix
               </label>
               <input
                 class="input-field"
@@ -158,7 +247,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && canSave()) handleSave();
                 }}
-                placeholder={t('task', 'task')}
+                placeholder="task"
                 style={{
                   background: theme.bgInput,
                   border: `1px solid ${theme.border}`,
@@ -206,7 +295,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                {t('Color', '颜色')}
+                Color
               </label>
               <div style={{ display: 'flex', gap: '8px', 'flex-wrap': 'wrap' }}>
                 <For each={PASTEL_HUES}>
@@ -229,7 +318,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                           padding: '0',
                           'flex-shrink': '0',
                         }}
-                        title={t(`Hue ${hue}`, `色相 ${hue}`)}
+                        title={`Hue ${hue}`}
                       />
                     );
                   }}
@@ -254,7 +343,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 onChange={(e) => setDeleteBranchOnClose(e.currentTarget.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              {t('Always delete branch and worklog on merge', '合并后始终删除分支与工作目录')}
+              Always delete branch and worklog on merge
             </label>
 
             {/* Default direct mode preference */}
@@ -274,7 +363,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 onChange={(e) => setDefaultDirectMode(e.currentTarget.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              {t('Default to working directly on main branch', '默认直接在主分支工作')}
+              Default to working directly on main branch
             </label>
 
             {/* Command Bookmarks */}
@@ -287,7 +376,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'letter-spacing': '0.05em',
                 }}
               >
-                {t('Command Bookmarks', '命令书签')}
+                Command Bookmarks
               </label>
               <Show when={bookmarks().length > 0}>
                 <div style={{ display: 'flex', 'flex-direction': 'column', gap: '4px' }}>
@@ -329,8 +418,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                             'line-height': '1',
                             'flex-shrink': '0',
                           }}
-                          title={t('Remove bookmark', '删除书签')}
-                          aria-label={t('Remove bookmark', '删除书签')}
+                          title="Remove bookmark"
                         >
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                             <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
@@ -353,7 +441,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                       addBookmark();
                     }
                   }}
-                  placeholder={t('e.g. npm run dev', '例如：npm run dev')}
+                  placeholder="e.g. npm run dev"
                   style={{
                     flex: '1',
                     background: theme.bgInput,
@@ -381,7 +469,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                     'flex-shrink': '0',
                   }}
                 >
-                  {t('Add', '添加')}
+                  Add
                 </button>
               </div>
             </div>
@@ -409,7 +497,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   'font-size': '13px',
                 }}
               >
-                {t('Cancel', '取消')}
+                Cancel
               </button>
               <button
                 type="button"
@@ -428,7 +516,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                   opacity: canSave() ? '1' : '0.4',
                 }}
               >
-                {t('Save', '保存')}
+                Save
               </button>
             </div>
           </>

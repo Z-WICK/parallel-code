@@ -14,6 +14,7 @@ import {
   killAllAgents,
   getAgentMeta,
 } from './pty.js';
+import { ensurePlansDirectory, startPlanWatcher } from './plans.js';
 import { startRemoteServer } from '../remote/server.js';
 import {
   getGitIgnoredDirs,
@@ -36,8 +37,18 @@ import {
 } from './git.js';
 import { createTask, deleteTask } from './tasks.js';
 import { listAgents } from './agents.js';
+import { listClaudeCommands } from './claude-commands.js';
 import { saveAppState, loadAppState } from './persistence.js';
+import { spawn } from 'child_process';
 import path from 'path';
+import {
+  assertString,
+  assertInt,
+  assertBoolean,
+  assertStringArray,
+  assertOptionalString,
+  assertOptionalBoolean,
+} from './validate.js';
 
 /** Reject paths that are non-absolute or attempt directory traversal. */
 function validatePath(p: unknown, label: string): void {
@@ -46,9 +57,10 @@ function validatePath(p: unknown, label: string): void {
   if (p.includes('..')) throw new Error(`${label} must not contain ".."`);
 }
 
-/** Reject relative paths that attempt directory traversal. */
+/** Reject relative paths that attempt directory traversal or are absolute. */
 function validateRelativePath(p: unknown, label: string): void {
   if (typeof p !== 'string') throw new Error(`${label} must be a string`);
+  if (path.isAbsolute(p)) throw new Error(`${label} must not be absolute`);
   if (p.includes('..')) throw new Error(`${label} must not contain ".."`);
 }
 
@@ -93,29 +105,68 @@ export function registerAllHandlers(win: BrowserWindow): void {
   // --- PTY commands ---
   ipcMain.handle(IPC.SpawnAgent, (_e, args) => {
     if (args.cwd) validatePath(args.cwd, 'cwd');
-    return spawnAgent(win, args);
+    if (!args.isShell && args.cwd) {
+      try {
+        ensurePlansDirectory(args.cwd);
+      } catch (err) {
+        console.warn('Failed to set up plans directory:', err);
+      }
+    }
+    const result = spawnAgent(win, args);
+    if (!args.isShell && args.cwd) {
+      try {
+        startPlanWatcher(win, args.taskId, args.cwd);
+      } catch (err) {
+        console.warn('Failed to start plan watcher:', err);
+      }
+    }
+    return result;
   });
-  ipcMain.handle(IPC.WriteToAgent, (_e, args) => writeToAgent(args.agentId, args.data));
-  ipcMain.handle(IPC.ResizeAgent, (_e, args) => resizeAgent(args.agentId, args.cols, args.rows));
-  ipcMain.handle(IPC.PauseAgent, (_e, args) => pauseAgent(args.agentId));
-  ipcMain.handle(IPC.ResumeAgent, (_e, args) => resumeAgent(args.agentId));
-  ipcMain.handle(IPC.KillAgent, (_e, args) => killAgent(args.agentId));
+  ipcMain.handle(IPC.WriteToAgent, (_e, args) => {
+    assertString(args.agentId, 'agentId');
+    assertString(args.data, 'data');
+    return writeToAgent(args.agentId, args.data);
+  });
+  ipcMain.handle(IPC.ResizeAgent, (_e, args) => {
+    assertString(args.agentId, 'agentId');
+    assertInt(args.cols, 'cols');
+    assertInt(args.rows, 'rows');
+    return resizeAgent(args.agentId, args.cols, args.rows);
+  });
+  ipcMain.handle(IPC.PauseAgent, (_e, args) => {
+    assertString(args.agentId, 'agentId');
+    return pauseAgent(args.agentId);
+  });
+  ipcMain.handle(IPC.ResumeAgent, (_e, args) => {
+    assertString(args.agentId, 'agentId');
+    return resumeAgent(args.agentId);
+  });
+  ipcMain.handle(IPC.KillAgent, (_e, args) => {
+    assertString(args.agentId, 'agentId');
+    return killAgent(args.agentId);
+  });
   ipcMain.handle(IPC.CountRunningAgents, () => countRunningAgents());
   ipcMain.handle(IPC.KillAllAgents, () => killAllAgents());
 
   // --- Agent commands ---
   ipcMain.handle(IPC.ListAgents, () => listAgents());
+  ipcMain.handle(IPC.ListClaudeCommands, () => listClaudeCommands());
 
   // --- Task commands ---
   ipcMain.handle(IPC.CreateTask, (_e, args) => {
+    assertString(args.name, 'name');
     validatePath(args.projectRoot, 'projectRoot');
+    assertStringArray(args.symlinkDirs, 'symlinkDirs');
+    assertOptionalString(args.branchPrefix, 'branchPrefix');
     const result = createTask(args.name, args.projectRoot, args.symlinkDirs, args.branchPrefix);
     result.then((r: { id: string }) => taskNames.set(r.id, args.name)).catch(() => {});
     return result;
   });
   ipcMain.handle(IPC.DeleteTask, (_e, args) => {
+    assertStringArray(args.agentIds, 'agentIds');
     validatePath(args.projectRoot, 'projectRoot');
     validateBranchName(args.branchName, 'branchName');
+    assertBoolean(args.deleteBranch, 'deleteBranch');
     return deleteTask(args.agentIds, args.branchName, args.deleteBranch, args.projectRoot);
   });
 
@@ -150,6 +201,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
   });
   ipcMain.handle(IPC.CommitAll, (_e, args) => {
     validatePath(args.worktreePath, 'worktreePath');
+    assertString(args.message, 'message');
     return commitAll(args.worktreePath, args.message);
   });
   ipcMain.handle(IPC.DiscardUncommitted, (_e, args) => {
@@ -163,6 +215,9 @@ export function registerAllHandlers(win: BrowserWindow): void {
   ipcMain.handle(IPC.MergeTask, (_e, args) => {
     validatePath(args.projectRoot, 'projectRoot');
     validateBranchName(args.branchName, 'branchName');
+    assertBoolean(args.squash, 'squash');
+    assertOptionalString(args.message, 'message');
+    assertOptionalBoolean(args.cleanup, 'cleanup');
     return mergeTask(args.projectRoot, args.branchName, args.squash, args.message, args.cleanup);
   });
   ipcMain.handle(IPC.GetBranchLog, (_e, args) => {
@@ -198,9 +253,12 @@ export function registerAllHandlers(win: BrowserWindow): void {
           if (t.id && t.name) taskNames.set(t.id, t.name);
         }
       }
-    } catch { /* ignore malformed state */ }
+    } catch (e) {
+      console.warn('Ignoring malformed saved state:', e);
+    }
   }
   ipcMain.handle(IPC.SaveAppState, (_e, args) => {
+    assertString(args.json, 'json');
     syncTaskNamesFromJson(args.json);
     return saveAppState(args.json);
   });
@@ -212,15 +270,20 @@ export function registerAllHandlers(win: BrowserWindow): void {
 
   // --- Arena persistence ---
   ipcMain.handle(IPC.SaveArenaData, (_e, args) => {
+    assertString(args.filename, 'filename');
+    assertString(args.json, 'json');
     const filePath = path.join(app.getPath('userData'), args.filename);
     const basename = path.basename(filePath);
     if (basename !== args.filename) throw new Error('Invalid filename');
     if (!basename.startsWith('arena-') || !basename.endsWith('.json'))
       throw new Error('Arena files must be arena-*.json');
-    fs.writeFileSync(filePath, args.json, 'utf-8');
+    const tmpPath = filePath + '.tmp';
+    fs.writeFileSync(tmpPath, args.json, 'utf-8');
+    fs.renameSync(tmpPath, filePath);
   });
 
   ipcMain.handle(IPC.LoadArenaData, (_e, args) => {
+    assertString(args.filename, 'filename');
     const filePath = path.join(app.getPath('userData'), args.filename);
     const basename = path.basename(filePath);
     if (basename !== args.filename) throw new Error('Invalid filename');
@@ -263,8 +326,16 @@ export function registerAllHandlers(win: BrowserWindow): void {
   ipcMain.handle(IPC.WindowHide, () => win.hide());
   ipcMain.handle(IPC.WindowMaximize, () => win.maximize());
   ipcMain.handle(IPC.WindowUnmaximize, () => win.unmaximize());
-  ipcMain.handle(IPC.WindowSetSize, (_e, args) => win.setSize(args.width, args.height));
-  ipcMain.handle(IPC.WindowSetPosition, (_e, args) => win.setPosition(args.x, args.y));
+  ipcMain.handle(IPC.WindowSetSize, (_e, args) => {
+    assertInt(args.width, 'width');
+    assertInt(args.height, 'height');
+    return win.setSize(args.width, args.height);
+  });
+  ipcMain.handle(IPC.WindowSetPosition, (_e, args) => {
+    assertInt(args.x, 'x');
+    assertInt(args.y, 'y');
+    return win.setPosition(args.x, args.y);
+  });
   ipcMain.handle(IPC.WindowGetPosition, () => {
     const [x, y] = win.getPosition();
     return { x, y };
@@ -337,6 +408,37 @@ export function registerAllHandlers(win: BrowserWindow): void {
     return filePath;
   });
 
+  ipcMain.handle(IPC.ShellOpenInEditor, (_e, args) => {
+    validatePath(args.worktreePath, 'worktreePath');
+    if (typeof args.editorCommand !== 'string' || !args.editorCommand.trim()) {
+      throw new Error('editorCommand must be a non-empty string');
+    }
+    const cmd = args.editorCommand.trim();
+    if (/[;&|`$(){}[\]<>\\'"*?!#~]/.test(cmd)) {
+      throw new Error('editorCommand must not contain shell metacharacters');
+    }
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const child = spawn(cmd, [args.worktreePath], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.on('error', (err) => {
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Failed to launch "${cmd}": ${err.message}`));
+        }
+      });
+      child.on('spawn', () => {
+        if (!settled) {
+          settled = true;
+          child.unref();
+          resolve();
+        }
+      });
+    });
+  });
+
   // --- Remote access ---
   ipcMain.handle(IPC.StartRemoteServer, (_e, args: { port?: number; allowExternal?: boolean } = {}) => {
     if (remoteServer) return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, tokenExpiresAt: remoteServer.tokenExpiresAt, port: remoteServer.port };
@@ -387,24 +489,36 @@ export function registerAllHandlers(win: BrowserWindow): void {
   let resizePending = false;
   win.on('resize', () => {
     if (win.isDestroyed()) return;
-    if (resizeThrottled) { resizePending = true; return; }
+    if (resizeThrottled) {
+      resizePending = true;
+      return;
+    }
     resizeThrottled = true;
     win.webContents.send(IPC.WindowResized);
     setTimeout(() => {
       resizeThrottled = false;
-      if (resizePending) { resizePending = false; if (!win.isDestroyed()) win.webContents.send(IPC.WindowResized); }
+      if (resizePending) {
+        resizePending = false;
+        if (!win.isDestroyed()) win.webContents.send(IPC.WindowResized);
+      }
     }, 100);
   });
   let moveThrottled = false;
   let movePending = false;
   win.on('move', () => {
     if (win.isDestroyed()) return;
-    if (moveThrottled) { movePending = true; return; }
+    if (moveThrottled) {
+      movePending = true;
+      return;
+    }
     moveThrottled = true;
     win.webContents.send(IPC.WindowMoved);
     setTimeout(() => {
       moveThrottled = false;
-      if (movePending) { movePending = false; if (!win.isDestroyed()) win.webContents.send(IPC.WindowMoved); }
+      if (movePending) {
+        movePending = false;
+        if (!win.isDestroyed()) win.webContents.send(IPC.WindowMoved);
+      }
     }, 100);
   });
   win.on('close', (e) => {

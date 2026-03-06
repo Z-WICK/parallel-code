@@ -298,6 +298,8 @@ const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // question text at the top of the dialog isn't truncated away.
 const TAIL_BUFFER_MAX = 4096;
 const outputTailBuffers = new Map<string, string>();
+// Per-agent UTF-8 decoders to correctly handle multi-byte characters split across chunks.
+const agentDecoders = new Map<string, TextDecoder>();
 
 // Per-agent timestamp of last expensive analysis (question/prompt detection).
 const lastAnalysisAt = new Map<string, number>();
@@ -348,24 +350,6 @@ export function markAgentSpawned(agentId: string): void {
     pendingAnalysis.delete(agentId);
   }
   lastDataAt.set(agentId, Date.now());
-  addToActive(agentId);
-  resetIdleTimer(agentId);
-}
-
-/** @deprecated Use markAgentOutput when raw bytes are available. */
-export function markAgentActive(agentId: string): void {
-  const now = Date.now();
-  lastDataAt.set(agentId, now);
-
-  // Already active — just reset the idle timer (throttled).
-  if (activeAgents().has(agentId)) {
-    const lastReset = lastIdleResetAt.get(agentId) ?? 0;
-    if (now - lastReset < THROTTLE_MS) return;
-    resetIdleTimer(agentId);
-    return;
-  }
-
-  // Not yet active — activate immediately and start idle timer.
   addToActive(agentId);
   resetIdleTimer(agentId);
 }
@@ -442,9 +426,12 @@ export function markAgentOutput(agentId: string, data: Uint8Array, taskId?: stri
   const now = Date.now();
   lastDataAt.set(agentId, now);
 
-  // Decode each chunk independently: TerminalView may pass only a tail slice
-  // for performance, so streaming decoder state would be invalid here.
-  const text = new TextDecoder().decode(data);
+  let decoder = agentDecoders.get(agentId);
+  if (!decoder) {
+    decoder = new TextDecoder();
+    agentDecoders.set(agentId, decoder);
+  }
+  const text = decoder.decode(data, { stream: true });
   const prev = outputTailBuffers.get(agentId) ?? '';
   const combined = prev + text;
   outputTailBuffers.set(
@@ -557,11 +544,24 @@ export function getAgentOutputTail(agentId: string): string {
   return outputTailBuffers.get(agentId) ?? '';
 }
 
+/** True when the agent is NOT producing output (e.g. sitting at a prompt). */
+export function isAgentIdle(agentId: string): boolean {
+  return !activeAgents().has(agentId);
+}
+
+/** Lightweight busy marker — adds to active set + resets idle timer.
+ *  Unlike markAgentSpawned this preserves the output tail buffer. */
+export function markAgentBusy(agentId: string): void {
+  addToActive(agentId);
+  resetIdleTimer(agentId);
+}
+
 /** Clean up timers when an agent exits. */
 export function clearAgentActivity(agentId: string): void {
   lastDataAt.delete(agentId);
   lastIdleResetAt.delete(agentId);
   outputTailBuffers.delete(agentId);
+  agentDecoders.delete(agentId);
   agentReadyCallbacks.delete(agentId);
   clearAutoTrustState(agentId);
   lastAnalysisAt.delete(agentId);

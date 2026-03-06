@@ -2,15 +2,12 @@ import { Show, createSignal, createEffect } from 'solid-js';
 import { Dialog } from './Dialog';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
-import { DiffView, DiffModeEnum } from '@git-diff-view/solid';
-import '@git-diff-view/solid/styles/diff-view.css';
 import { theme } from '../lib/theme';
 import { isBinaryDiff } from '../lib/diff-parser';
 import { getStatusColor } from '../lib/status-colors';
 import { openFileInEditor } from '../lib/shell';
-import { store } from '../store/store';
-import { localize } from '../lib/i18n';
-import type { ChangedFile } from '../ipc/types';
+import { MonacoDiffEditor } from './MonacoDiffEditor';
+import type { ChangedFile, FileDiffResult } from '../ipc/types';
 
 interface DiffViewerDialogProps {
   file: ChangedFile | null;
@@ -22,29 +19,24 @@ interface DiffViewerDialogProps {
   branchName?: string | null;
 }
 
-function getStatusLabel(status: string, locale: 'en' | 'zh-CN'): string {
-  const t = (english: string, chinese: string) => localize(locale, english, chinese);
-  return (
-    {
-      M: t('Modified', '已修改'),
-      A: t('Added', '已新增'),
-      D: t('Deleted', '已删除'),
-      '?': t('Untracked', '未跟踪'),
-    }[status] ?? status
-  );
-}
+const STATUS_LABELS: Record<string, string> = {
+  M: 'Modified',
+  A: 'Added',
+  D: 'Deleted',
+  '?': 'Untracked',
+};
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
-  tsx: 'tsx',
+  tsx: 'typescript',
   js: 'javascript',
-  jsx: 'jsx',
+  jsx: 'javascript',
   rs: 'rust',
   json: 'json',
   css: 'css',
   scss: 'scss',
   less: 'less',
-  html: 'xml',
+  html: 'html',
   xml: 'xml',
   svg: 'xml',
   md: 'markdown',
@@ -55,9 +47,9 @@ const EXT_TO_LANG: Record<string, string> = {
   kt: 'kotlin',
   swift: 'swift',
   sql: 'sql',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
+  sh: 'shell',
+  bash: 'shell',
+  zsh: 'shell',
   yaml: 'yaml',
   yml: 'yaml',
   toml: 'ini',
@@ -79,12 +71,16 @@ function detectLang(filePath: string): string {
 }
 
 export function DiffViewerDialog(props: DiffViewerDialogProps) {
-  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
-  const [rawDiff, setRawDiff] = createSignal('');
+  const [oldContent, setOldContent] = createSignal('');
+  const [newContent, setNewContent] = createSignal('');
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal('');
   const [binary, setBinary] = createSignal(false);
-  const [viewMode, setViewMode] = createSignal(DiffModeEnum.Split);
+  const [sideBySide, setSideBySide] = createSignal(true);
+  const [hasChanges, setHasChanges] = createSignal(true);
+  const [metadataOnly, setMetadataOnly] = createSignal(false);
+
+  let fetchGeneration = 0;
 
   createEffect(() => {
     const file = props.file;
@@ -93,37 +89,50 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
     const worktreePath = props.worktreePath;
     const projectRoot = props.projectRoot;
     const branchName = props.branchName;
+    const thisGen = ++fetchGeneration;
 
     setLoading(true);
     setError('');
     setBinary(false);
-    setRawDiff('');
+    setOldContent('');
+    setNewContent('');
+    setHasChanges(true);
+    setMetadataOnly(false);
 
     const worktreePromise = worktreePath
-      ? invoke<string>(IPC.GetFileDiff, { worktreePath, filePath: file.path })
+      ? invoke<FileDiffResult>(IPC.GetFileDiff, { worktreePath, filePath: file.path })
       : Promise.reject(new Error('no worktree'));
 
     worktreePromise
       .catch(() => {
-        // Worktree may not exist — try branch-based fallback
         if (projectRoot && branchName) {
-          return invoke<string>(IPC.GetFileDiffFromBranch, {
+          return invoke<FileDiffResult>(IPC.GetFileDiffFromBranch, {
             projectRoot,
             branchName,
             filePath: file.path,
           });
         }
-        return '';
+        return { diff: '', oldContent: '', newContent: '' };
       })
-      .then((raw) => {
-        if (isBinaryDiff(raw)) {
+      .then((result) => {
+        if (thisGen !== fetchGeneration) return;
+        if (isBinaryDiff(result.diff)) {
           setBinary(true);
         } else {
-          setRawDiff(raw);
+          setOldContent(result.oldContent);
+          setNewContent(result.newContent);
+          const contentDiffers = result.oldContent !== result.newContent;
+          setHasChanges(result.diff !== '' || contentDiffers);
+          setMetadataOnly(result.diff !== '' && !contentDiffers);
         }
       })
-      .catch((err) => setError(String(err)))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (thisGen !== fetchGeneration) return;
+        setError(String(err));
+      })
+      .finally(() => {
+        if (thisGen === fetchGeneration) setLoading(false);
+      });
   });
 
   return (
@@ -163,7 +172,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                   background: 'rgba(255,255,255,0.06)',
                 }}
               >
-                {getStatusLabel(file().status, store.locale)}
+                {STATUS_LABELS[file().status] ?? file().status}
               </span>
               <span
                 style={{
@@ -190,12 +199,11 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                 }}
               >
                 <button
-                  onClick={() => setViewMode(DiffModeEnum.Split)}
+                  onClick={() => setSideBySide(true)}
                   style={{
-                    background:
-                      viewMode() === DiffModeEnum.Split ? 'rgba(255,255,255,0.10)' : 'transparent',
+                    background: sideBySide() ? 'rgba(255,255,255,0.10)' : 'transparent',
                     border: 'none',
-                    color: viewMode() === DiffModeEnum.Split ? theme.fg : theme.fgMuted,
+                    color: sideBySide() ? theme.fg : theme.fgMuted,
                     'font-size': '11px',
                     padding: '3px 10px',
                     'border-radius': '4px',
@@ -203,17 +211,14 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                     'font-family': 'inherit',
                   }}
                 >
-                  {t('Split', '分栏')}
+                  Split
                 </button>
                 <button
-                  onClick={() => setViewMode(DiffModeEnum.Unified)}
+                  onClick={() => setSideBySide(false)}
                   style={{
-                    background:
-                      viewMode() === DiffModeEnum.Unified
-                        ? 'rgba(255,255,255,0.10)'
-                        : 'transparent',
+                    background: !sideBySide() ? 'rgba(255,255,255,0.10)' : 'transparent',
                     border: 'none',
-                    color: viewMode() === DiffModeEnum.Unified ? theme.fg : theme.fgMuted,
+                    color: !sideBySide() ? theme.fg : theme.fgMuted,
                     'font-size': '11px',
                     padding: '3px 10px',
                     'border-radius': '4px',
@@ -221,7 +226,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                     'font-family': 'inherit',
                   }}
                 >
-                  {t('Unified', '统一')}
+                  Unified
                 </button>
               </div>
 
@@ -239,7 +244,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                   'align-items': 'center',
                   'border-radius': '4px',
                 }}
-                title={t('Open in editor', '在编辑器中打开')}
+                title="Open in editor"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.5 2a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-3a.75.75 0 0 1 1.5 0v3A3 3 0 0 1 12.5 16h-9A3 3 0 0 1 0 12.5v-9A3 3 0 0 1 3.5 0h3a.75.75 0 0 1 0 1.5h-3ZM10 .75a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V2.56L8.53 8.53a.75.75 0 0 1-1.06-1.06L13.44 1.5H10.75A.75.75 0 0 1 10 .75Z" />
@@ -258,7 +263,7 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
                   'align-items': 'center',
                   'border-radius': '4px',
                 }}
-                title={t('Close', '关闭')}
+                title="Close"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
@@ -270,12 +275,12 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
             <div
               style={{
                 flex: '1',
-                overflow: 'auto',
+                overflow: 'hidden',
               }}
             >
               <Show when={loading()}>
                 <div style={{ padding: '40px', 'text-align': 'center', color: theme.fgMuted }}>
-                  {t('Loading diff...', '正在加载 Diff...')}
+                  Loading diff...
                 </div>
               </Show>
 
@@ -287,28 +292,28 @@ export function DiffViewerDialog(props: DiffViewerDialogProps) {
 
               <Show when={binary()}>
                 <div style={{ padding: '40px', 'text-align': 'center', color: theme.fgMuted }}>
-                  {t('Binary file — cannot display diff', '二进制文件，无法显示 Diff')}
+                  Binary file — cannot display diff
                 </div>
               </Show>
 
-              <Show when={!loading() && !error() && !binary() && !rawDiff()}>
+              <Show when={!loading() && !error() && !binary() && !hasChanges()}>
                 <div style={{ padding: '40px', 'text-align': 'center', color: theme.fgMuted }}>
-                  {t('No changes', '无变更')}
+                  No changes
                 </div>
               </Show>
 
-              <Show when={!loading() && !error() && !binary() && rawDiff()}>
-                <DiffView
-                  data={{
-                    oldFile: { fileName: file().path, fileLang: detectLang(file().path) },
-                    newFile: { fileName: file().path, fileLang: detectLang(file().path) },
-                    hunks: [rawDiff()],
-                  }}
-                  diffViewMode={viewMode()}
-                  diffViewTheme="dark"
-                  diffViewHighlight
-                  diffViewWrap={false}
-                  diffViewFontSize={12}
+              <Show when={!loading() && !error() && !binary() && metadataOnly()}>
+                <div style={{ padding: '40px', 'text-align': 'center', color: theme.fgMuted }}>
+                  File metadata changed (permissions/mode) — no content differences
+                </div>
+              </Show>
+
+              <Show when={!loading() && !error() && !binary() && hasChanges() && !metadataOnly()}>
+                <MonacoDiffEditor
+                  oldContent={oldContent()}
+                  newContent={newContent()}
+                  language={detectLang(file().path)}
+                  sideBySide={sideBySide()}
                 />
               </Show>
             </div>

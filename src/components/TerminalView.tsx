@@ -41,6 +41,7 @@ function base64ToUint8Array(b64: string): Uint8Array {
 interface TerminalViewProps {
   taskId: string;
   agentId: string;
+  isShell?: boolean;
   command: string;
   args: string[];
   cwd: string;

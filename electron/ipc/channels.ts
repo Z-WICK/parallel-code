@@ -9,6 +9,7 @@ export enum IPC {
   CountRunningAgents = 'count_running_agents',
   KillAllAgents = 'kill_all_agents',
   ListAgents = 'list_agents',
+  ListClaudeCommands = 'list_claude_commands',
 
   // Task
   CreateTask = 'create_task',
@@ -63,6 +64,7 @@ export enum IPC {
   ShellReveal = '__shell_reveal',
   ShellOpenFile = '__shell_open_file',
   SaveClipboardImage = 'save_clipboard_image',
+  ShellOpenInEditor = '__shell_open_in_editor',
 
   // Arena
   SaveArenaData = 'save_arena_data',
@@ -75,4 +77,7 @@ export enum IPC {
   StartRemoteServer = 'start_remote_server',
   StopRemoteServer = 'stop_remote_server',
   GetRemoteStatus = 'get_remote_status',
+
+  // Plan
+  PlanContent = 'plan_content',
 }

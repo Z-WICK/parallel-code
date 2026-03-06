@@ -9,6 +9,9 @@ export {
   getProjectPath,
   getProjectBranchPrefix,
   pickAndAddProject,
+  validateProjectPaths,
+  relinkProject,
+  isProjectMissing,
   PASTEL_HUES,
 } from './projects';
 export {
@@ -20,6 +23,13 @@ export {
   removeCustomAgent,
   updateCustomAgent,
 } from './agents';
+export {
+  getBuiltInSlashCommands,
+  getSlashCommands,
+  loadCliSlashCommands,
+  addCustomSlashCommand,
+  removeCustomSlashCommand,
+} from './commands';
 export {
   createTask,
   createDirectTask,
@@ -36,11 +46,15 @@ export {
   setPrefillPrompt,
   reorderTask,
   spawnShellForTask,
+  runBookmarkInTask,
   closeShell,
   hasDirectModeTask,
+  collapseTask,
+  uncollapseTask,
   getGitHubDropDefaults,
   setNewTaskDropUrl,
   setNewTaskPrefillPrompt,
+  setPlanContent,
 } from './tasks';
 export {
   setActiveTask,
@@ -88,12 +102,13 @@ export {
   setThemePreset,
   setLocale,
   setAutoTrustFolders,
+  setShowPlans,
   setInactiveColumnOpacity,
+  setEditorCommand,
   setWindowState,
 } from './ui';
 export {
   getTaskDotStatus,
-  markAgentActive,
   markAgentOutput,
   clearAgentActivity,
   getAgentOutputTail,

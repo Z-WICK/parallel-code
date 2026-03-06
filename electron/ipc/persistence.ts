@@ -28,11 +28,11 @@ export function saveAppState(json: string): void {
   const tmpPath = statePath + '.tmp';
   fs.writeFileSync(tmpPath, json, 'utf8');
 
-  // Keep one backup
+  // Keep one backup (copy so statePath is never missing during the operation)
   if (fs.existsSync(statePath)) {
-    const bakPath = statePath.replace('.json', '.json.bak');
+    const bakPath = statePath + '.bak';
     try {
-      fs.renameSync(statePath, bakPath);
+      fs.copyFileSync(statePath, bakPath);
     } catch {
       /* ignore */
     }
@@ -43,16 +43,24 @@ export function saveAppState(json: string): void {
 
 export function loadAppState(): string | null {
   const statePath = getStatePath();
+  const bakPath = statePath + '.bak';
 
-  if (fs.existsSync(statePath)) {
-    const content = fs.readFileSync(statePath, 'utf8');
-    if (content.trim()) return content;
+  try {
+    if (fs.existsSync(statePath)) {
+      const content = fs.readFileSync(statePath, 'utf8');
+      if (content.trim()) return content;
+    }
+  } catch {
+    // Primary state file unreadable — try backup
   }
 
-  const bakPath = statePath.replace('.json', '.json.bak');
-  if (fs.existsSync(bakPath)) {
-    const content = fs.readFileSync(bakPath, 'utf8');
-    if (content.trim()) return content;
+  try {
+    if (fs.existsSync(bakPath)) {
+      const content = fs.readFileSync(bakPath, 'utf8');
+      if (content.trim()) return content;
+    }
+  } catch {
+    // Backup also unreadable
   }
 
   return null;

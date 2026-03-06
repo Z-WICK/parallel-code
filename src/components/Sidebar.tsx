@@ -18,10 +18,11 @@ import {
   getPanelSize,
   setPanelSizes,
   toggleSettingsDialog,
+  uncollapseTask,
+  isProjectMissing,
 } from '../store/store';
 import type { Project } from '../store/types';
 import { ConnectPhoneModal } from './ConnectPhoneModal';
-import { stopRemoteAccess } from '../store/remote';
 import { ConfirmDialog } from './ConfirmDialog';
 import { EditProjectDialog } from './EditProjectDialog';
 import { SidebarFooter } from './SidebarFooter';
@@ -30,7 +31,6 @@ import { StatusDot } from './StatusDot';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { mod } from '../lib/platform';
-import { localize } from '../lib/i18n';
 
 const DRAG_THRESHOLD = 5;
 const SIDEBAR_DEFAULT_WIDTH = 240;
@@ -39,7 +39,6 @@ const SIDEBAR_MAX_WIDTH = 480;
 const SIDEBAR_SIZE_KEY = 'sidebar:width';
 
 export function Sidebar() {
-  const t = (english: string, chinese: string) => localize(store.locale, english, chinese);
   const [confirmRemove, setConfirmRemove] = createSignal<string | null>(null);
   const [editingProject, setEditingProject] = createSignal<Project | null>(null);
   const [showConnectPhone, setShowConnectPhone] = createSignal(false);
@@ -72,6 +71,9 @@ export function Sidebar() {
 
     return { grouped, orphaned };
   });
+  const collapsedTasks = createMemo(() =>
+    store.collapsedTaskOrder.filter((id) => store.tasks[id]?.collapsed),
+  );
   function handleResizeMouseDown(e: MouseEvent) {
     e.preventDefault();
     setResizing(true);
@@ -130,7 +132,9 @@ export function Sidebar() {
     if (!activeId || !taskListRef) return;
     const idx = taskIndexById().get(activeId);
     if (idx === undefined) return;
-    const el = taskListRef.querySelector<HTMLElement>(`[data-task-index="${idx}"]`);
+    const el = taskListRef.querySelector<HTMLElement>(
+      `[data-task-index="${CSS.escape(String(idx))}"]`,
+    );
     el?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
   });
 
@@ -140,7 +144,9 @@ export function Sidebar() {
     if (!focusedId || !taskListRef) return;
     const idx = taskIndexById().get(focusedId);
     if (idx === undefined) return;
-    const el = taskListRef.querySelector<HTMLElement>(`[data-task-index="${idx}"]`);
+    const el = taskListRef.querySelector<HTMLElement>(
+      `[data-task-index="${CSS.escape(String(idx))}"]`,
+    );
     el?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
   });
 
@@ -149,7 +155,9 @@ export function Sidebar() {
     const projectId = store.sidebarFocusedProjectId;
     if (!projectId) return;
     requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLElement>(`[data-project-id="${projectId}"]`);
+      const el = document.querySelector<HTMLElement>(
+        `[data-project-id="${CSS.escape(projectId)}"]`,
+      );
       el?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     });
   });
@@ -159,7 +167,9 @@ export function Sidebar() {
   }
 
   function handleRemoveProject(projectId: string) {
-    const hasTasks = store.taskOrder.some((tid) => store.tasks[tid]?.projectId === projectId);
+    const hasTasks =
+      store.taskOrder.some((tid) => store.tasks[tid]?.projectId === projectId) ||
+      store.collapsedTaskOrder.some((tid) => store.tasks[tid]?.projectId === projectId);
     if (hasTasks) {
       setConfirmRemove(projectId);
     } else {
@@ -226,12 +236,15 @@ export function Sidebar() {
   }
 
   function abbreviatePath(path: string): string {
-    const home = '/home/';
-    if (path.startsWith(home)) {
-      const rest = path.slice(home.length);
-      const slashIdx = rest.indexOf('/');
-      if (slashIdx !== -1) return '~' + rest.slice(slashIdx);
-      return '~';
+    // Handle Linux /home/user/... and macOS /Users/user/...
+    const prefixes = ['/home/', '/Users/'];
+    for (const prefix of prefixes) {
+      if (path.startsWith(prefix)) {
+        const rest = path.slice(prefix.length);
+        const slashIdx = rest.indexOf('/');
+        if (slashIdx !== -1) return '~' + rest.slice(slashIdx);
+        return '~';
+      }
     }
     return path;
   }
@@ -304,7 +317,7 @@ export function Sidebar() {
                 </svg>
               }
               onClick={() => toggleSettingsDialog(true)}
-              title={t(`Settings (${mod}+,)`, `设置 (${mod}+,)`)}
+              title={`Settings (${mod}+,)`}
             />
             <IconButton
               icon={
@@ -313,7 +326,7 @@ export function Sidebar() {
                 </svg>
               }
               onClick={() => toggleSidebar()}
-              title={t(`Collapse sidebar (${mod}+B)`, `折叠侧边栏 (${mod}+B)`)}
+              title={`Collapse sidebar (${mod}+B)`}
             />
           </div>
         </div>
@@ -336,7 +349,7 @@ export function Sidebar() {
                 'letter-spacing': '0.05em',
               }}
             >
-              {t('Projects', '项目')}
+              Projects
             </label>
             <IconButton
               icon={
@@ -345,7 +358,7 @@ export function Sidebar() {
                 </svg>
               }
               onClick={() => handleAddProject()}
-              title={t('Add project', '添加项目')}
+              title="Add project"
               size="sm"
             />
           </div>
@@ -366,7 +379,9 @@ export function Sidebar() {
                   gap: '6px',
                   padding: '4px 6px',
                   'border-radius': '6px',
-                  background: theme.bgInput,
+                  background: isProjectMissing(project.id)
+                    ? `color-mix(in srgb, ${theme.warning} 8%, ${theme.bgInput})`
+                    : theme.bgInput,
                   'font-size': sf(11),
                   cursor: 'pointer',
                   border:
@@ -398,14 +413,16 @@ export function Sidebar() {
                   </div>
                   <div
                     style={{
-                      color: theme.fgSubtle,
+                      color: isProjectMissing(project.id) ? theme.warning : theme.fgSubtle,
                       'font-size': sf(10),
                       'white-space': 'nowrap',
                       overflow: 'hidden',
                       'text-overflow': 'ellipsis',
                     }}
                   >
-                    {abbreviatePath(project.path)}
+                    {isProjectMissing(project.id)
+                      ? 'Folder not found'
+                      : abbreviatePath(project.path)}
                   </div>
                 </div>
                 <button
@@ -414,8 +431,7 @@ export function Sidebar() {
                     e.stopPropagation();
                     handleRemoveProject(project.id);
                   }}
-                  title={t('Remove project', '移除项目')}
-                  aria-label={t('Remove project', '移除项目')}
+                  title="Remove project"
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -435,7 +451,7 @@ export function Sidebar() {
 
           <Show when={store.projects.length === 0}>
             <span style={{ 'font-size': sf(10), color: theme.fgSubtle, padding: '0 2px' }}>
-              {t('No projects linked yet.', '尚未关联任何项目。')}
+              No projects linked yet.
             </span>
           </Show>
         </div>
@@ -474,7 +490,7 @@ export function Sidebar() {
               >
                 <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.22.78 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2A1.75 1.75 0 0 0 5 1H1.75Z" />
               </svg>
-              {t('Link Project', '关联项目')}
+              Link Project
             </button>
           }
         >
@@ -500,7 +516,7 @@ export function Sidebar() {
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
             </svg>
-            {t('New Task', '新建任务')}
+            New Task
           </button>
         </Show>
 
@@ -593,7 +609,7 @@ export function Sidebar() {
                 padding: '0 2px',
               }}
             >
-              {t('Other', '其他')} ({groupedTasks().orphaned.length})
+              Other ({groupedTasks().orphaned.length})
             </span>
             <For each={groupedTasks().orphaned}>
               {(taskId) => (
@@ -607,6 +623,84 @@ export function Sidebar() {
             </For>
           </Show>
 
+          <Show when={collapsedTasks().length > 0}>
+            <span
+              style={{
+                'font-size': sf(10),
+                color: theme.fgSubtle,
+                'text-transform': 'uppercase',
+                'letter-spacing': '0.05em',
+                'margin-top': '8px',
+                'margin-bottom': '4px',
+                padding: '0 2px',
+              }}
+            >
+              Collapsed ({collapsedTasks().length})
+            </span>
+            <For each={collapsedTasks()}>
+              {(taskId) => {
+                const task = () => store.tasks[taskId];
+                return (
+                  <Show when={task()}>
+                    {(t) => (
+                      <div
+                        class="task-item task-item-appearing"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => uncollapseTask(taskId)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            uncollapseTask(taskId);
+                          }
+                        }}
+                        title="Click to restore"
+                        style={{
+                          padding: '7px 10px',
+                          'border-radius': '6px',
+                          background: 'transparent',
+                          color: theme.fgSubtle,
+                          'font-size': sf(12),
+                          'font-weight': '400',
+                          cursor: 'pointer',
+                          'white-space': 'nowrap',
+                          overflow: 'hidden',
+                          'text-overflow': 'ellipsis',
+                          opacity: '0.6',
+                          display: 'flex',
+                          'align-items': 'center',
+                          gap: '6px',
+                          border: '1.5px solid transparent',
+                        }}
+                      >
+                        <StatusDot status={getTaskDotStatus(taskId)} size="sm" />
+                        <Show when={t().directMode}>
+                          <span
+                            style={{
+                              'font-size': sf(10),
+                              'font-weight': '600',
+                              padding: '1px 5px',
+                              'border-radius': '3px',
+                              background: `color-mix(in srgb, ${theme.warning} 12%, transparent)`,
+                              color: theme.warning,
+                              'flex-shrink': '0',
+                              'line-height': '1.5',
+                            }}
+                          >
+                            {t().branchName}
+                          </span>
+                        </Show>
+                        <span style={{ overflow: 'hidden', 'text-overflow': 'ellipsis' }}>
+                          {t().name}
+                        </span>
+                      </div>
+                    )}
+                  </Show>
+                );
+              }}
+            </For>
+          </Show>
+
           <Show when={dropTargetIndex() === store.taskOrder.length}>
             <div class="drop-indicator" />
           </Show>
@@ -614,11 +708,12 @@ export function Sidebar() {
 
         {/* Connect / Disconnect Phone button */}
         {(() => {
-          const enabled = () => store.remoteAccess.enabled;
-          const accent = () => enabled() ? theme.error : theme.fgMuted;
+          const connected = () =>
+            store.remoteAccess.enabled && store.remoteAccess.connectedClients > 0;
+          const accent = () => (connected() ? theme.success : theme.fgMuted);
           return (
             <button
-              onClick={() => enabled() ? stopRemoteAccess() : setShowConnectPhone(true)}
+              onClick={() => setShowConnectPhone(true)}
               style={{
                 display: 'flex',
                 'align-items': 'center',
@@ -626,7 +721,7 @@ export function Sidebar() {
                 padding: '8px 12px',
                 margin: '4px 8px',
                 background: 'transparent',
-                border: `1px solid ${enabled() ? theme.error : theme.border}`,
+                border: `1px solid ${connected() ? theme.success : theme.border}`,
                 'border-radius': '8px',
                 color: accent(),
                 'font-size': sf(12),
@@ -634,23 +729,27 @@ export function Sidebar() {
                 'flex-shrink': '0',
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accent()} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={accent()}
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
                 <line x1="12" y1="18" x2="12.01" y2="18" />
               </svg>
-              {enabled()
-                ? `${t('Disconnect Phone', '断开手机连接')}${store.remoteAccess.connectedClients > 0 ? ` (${store.remoteAccess.connectedClients})` : ''}`
-                : t('Connect Phone', '连接手机')}
+              {connected() ? 'Phone Connected' : 'Connect Phone'}
             </button>
           );
         })()}
 
         <SidebarFooter />
 
-        <ConnectPhoneModal
-          open={showConnectPhone()}
-          onClose={() => setShowConnectPhone(false)}
-        />
+        <ConnectPhoneModal open={showConnectPhone()} onClose={() => setShowConnectPhone(false)} />
 
         {/* Edit project dialog */}
         <EditProjectDialog project={editingProject()} onClose={() => setEditingProject(null)} />
@@ -658,16 +757,13 @@ export function Sidebar() {
         {/* Confirm remove project dialog */}
         <ConfirmDialog
           open={confirmRemove() !== null}
-          title={t('Remove project?', '移除项目？')}
-          message={t(
-            `This project has ${
-              store.taskOrder.filter((tid) => store.tasks[tid]?.projectId === confirmRemove()).length
-            } open task(s). Removing it will also close all tasks, delete their worktrees and branches.`,
-            `该项目有 ${
-              store.taskOrder.filter((tid) => store.tasks[tid]?.projectId === confirmRemove()).length
-            } 个打开的任务。移除项目将同时关闭所有任务，并删除对应的 worktree 和分支。`,
-          )}
-          confirmLabel={t('Remove all', '全部移除')}
+          title="Remove project?"
+          message={`This project has ${
+            [...store.taskOrder, ...store.collapsedTaskOrder].filter(
+              (tid) => store.tasks[tid]?.projectId === confirmRemove(),
+            ).length
+          } open task(s). Removing it will also close all tasks, delete their worktrees and branches.`}
+          confirmLabel="Remove all"
           danger
           onConfirm={() => {
             const id = confirmRemove();
