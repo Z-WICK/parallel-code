@@ -407,7 +407,6 @@ export function registerAllHandlers(win: BrowserWindow): void {
     fs.writeFileSync(filePath, bytes);
     return filePath;
   });
-
   ipcMain.handle(IPC.ShellOpenInEditor, (_e, args) => {
     validatePath(args.worktreePath, 'worktreePath');
     if (typeof args.editorCommand !== 'string' || !args.editorCommand.trim()) {
@@ -440,29 +439,47 @@ export function registerAllHandlers(win: BrowserWindow): void {
   });
 
   // --- Remote access ---
-  ipcMain.handle(IPC.StartRemoteServer, (_e, args: { port?: number; allowExternal?: boolean } = {}) => {
-    if (remoteServer) return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, tokenExpiresAt: remoteServer.tokenExpiresAt, port: remoteServer.port };
-    const port = args.port ?? 7777;
-    validatePort(port, 'port');
-
-    const thisDir = path.dirname(fileURLToPath(import.meta.url));
-    const distRemote = path.join(thisDir, "..", "..", "dist-remote");
-    remoteServer = startRemoteServer({
-      port,
-      allowExternal: args.allowExternal === true,
-      staticDir: distRemote,
-      getTaskName: (taskId: string) => taskNames.get(taskId) ?? taskId,
-      getAgentStatus: (agentId: string) => {
-        const meta = getAgentMeta(agentId);
+  ipcMain.handle(
+    IPC.StartRemoteServer,
+    (_e, args: { port?: number; allowExternal?: boolean } = {}) => {
+      if (remoteServer)
         return {
-          status: meta ? "running" as const : "exited" as const,
-          exitCode: null,
-          lastLine: "",
+          url: remoteServer.url,
+          wifiUrl: remoteServer.wifiUrl,
+          tailscaleUrl: remoteServer.tailscaleUrl,
+          token: remoteServer.token,
+          tokenExpiresAt: remoteServer.tokenExpiresAt,
+          port: remoteServer.port,
         };
-      },
-    });
-    return { url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, tokenExpiresAt: remoteServer.tokenExpiresAt, port: remoteServer.port };
-  });
+      const port = args.port ?? 7777;
+      validatePort(port, 'port');
+
+      const thisDir = path.dirname(fileURLToPath(import.meta.url));
+      const distRemote = path.join(thisDir, '..', '..', 'dist-remote');
+      remoteServer = startRemoteServer({
+        port,
+        allowExternal: args.allowExternal === true,
+        staticDir: distRemote,
+        getTaskName: (taskId: string) => taskNames.get(taskId) ?? taskId,
+        getAgentStatus: (agentId: string) => {
+          const meta = getAgentMeta(agentId);
+          return {
+            status: meta ? ('running' as const) : ('exited' as const),
+            exitCode: null,
+            lastLine: '',
+          };
+        },
+      });
+      return {
+        url: remoteServer.url,
+        wifiUrl: remoteServer.wifiUrl,
+        tailscaleUrl: remoteServer.tailscaleUrl,
+        token: remoteServer.token,
+        tokenExpiresAt: remoteServer.tokenExpiresAt,
+        port: remoteServer.port,
+      };
+    },
+  );
 
   ipcMain.handle(IPC.StopRemoteServer, async () => {
     if (remoteServer) {
@@ -473,7 +490,16 @@ export function registerAllHandlers(win: BrowserWindow): void {
 
   ipcMain.handle(IPC.GetRemoteStatus, () => {
     if (!remoteServer) return { enabled: false, connectedClients: 0 };
-    return { enabled: true, connectedClients: remoteServer.connectedClients(), url: remoteServer.url, wifiUrl: remoteServer.wifiUrl, tailscaleUrl: remoteServer.tailscaleUrl, token: remoteServer.token, tokenExpiresAt: remoteServer.tokenExpiresAt, port: remoteServer.port };
+    return {
+      enabled: true,
+      connectedClients: remoteServer.connectedClients(),
+      url: remoteServer.url,
+      wifiUrl: remoteServer.wifiUrl,
+      tailscaleUrl: remoteServer.tailscaleUrl,
+      token: remoteServer.token,
+      tokenExpiresAt: remoteServer.tokenExpiresAt,
+      port: remoteServer.port,
+    };
   });
 
   // --- Forward window events to renderer ---

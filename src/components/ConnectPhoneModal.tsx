@@ -1,15 +1,15 @@
 // src/components/ConnectPhoneModal.tsx
 
-import { Show, createSignal, createEffect, onCleanup, createMemo, untrack } from "solid-js";
-import { Portal } from "solid-js/web";
-import { createFocusRestore } from "../lib/focus-restore";
-import { closeConnectPhoneModal, disconnectConnectPhoneModal } from "../lib/connect-phone-session";
-import { store } from "../store/core";
-import { startRemoteAccess, stopRemoteAccess, refreshRemoteStatus } from "../store/remote";
-import { theme } from "../lib/theme";
-import { localize } from "../lib/i18n";
+import { Show, createSignal, createEffect, onCleanup, createMemo, untrack } from 'solid-js';
+import { Portal } from 'solid-js/web';
+import { createFocusRestore } from '../lib/focus-restore';
+import { closeConnectPhoneModal, disconnectConnectPhoneModal } from '../lib/connect-phone-session';
+import { store } from '../store/core';
+import { startRemoteAccess, stopRemoteAccess, refreshRemoteStatus } from '../store/remote';
+import { theme } from '../lib/theme';
+import { localize } from '../lib/i18n';
 
-type NetworkMode = "wifi" | "tailscale";
+type NetworkMode = 'wifi' | 'tailscale';
 
 interface ConnectPhoneModalProps {
   open: boolean;
@@ -22,15 +22,17 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
   const [starting, setStarting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [copied, setCopied] = createSignal(false);
-  const [mode, setMode] = createSignal<NetworkMode>("wifi");
+  const [mode, setMode] = createSignal<NetworkMode>('wifi');
   let dialogRef: HTMLDivElement | undefined;
   let stopPolling: (() => void) | undefined;
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    if (copiedTimer !== undefined) clearTimeout(copiedTimer);
+  });
 
   const activeUrl = createMemo(() => {
     if (!store.remoteAccess.enabled) return null;
-    return mode() === "tailscale"
-      ? store.remoteAccess.tailscaleUrl
-      : store.remoteAccess.wifiUrl;
+    return mode() === 'tailscale' ? store.remoteAccess.tailscaleUrl : store.remoteAccess.wifiUrl;
   });
 
   createFocusRestore(() => props.open);
@@ -61,11 +63,11 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
 
   async function generateQr(url: string) {
     try {
-      const QRCode = await import("qrcode");
+      const QRCode = await import('qrcode');
       const dataUrl = await QRCode.toDataURL(url, {
         width: 256,
         margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
+        color: { dark: '#000000', light: '#ffffff' },
       });
       setQrDataUrl(dataUrl);
     } catch {
@@ -89,30 +91,38 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
     requestAnimationFrame(() => dialogRef?.focus());
 
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") void closeOnly();
+      if (e.key === 'Escape') void closeOnly();
     };
-    document.addEventListener("keydown", handler);
-    onCleanup(() => document.removeEventListener("keydown", handler));
+    document.addEventListener('keydown', handler);
+    onCleanup(() => document.removeEventListener('keydown', handler));
 
     if (!store.remoteAccess.enabled && !untrack(starting)) {
       setStarting(true);
       setError(null);
-      startRemoteAccess({ allowExternal: true }).then((result) => {
-        setStarting(false);
-        // Default to wifi if available, otherwise tailscale
-        setMode(result.wifiUrl ? "wifi" : "tailscale");
-        const url = result.wifiUrl ?? result.tailscaleUrl ?? result.url;
-        generateQr(url);
-      }).catch((err: unknown) => {
-        setStarting(false);
-        setError(err instanceof Error ? err.message : t("Failed to start server", "启动服务失败"));
-      });
+      startRemoteAccess({ allowExternal: true })
+        .then((result) => {
+          setStarting(false);
+          // Default to wifi if available, otherwise tailscale
+          setMode(result.wifiUrl ? 'wifi' : 'tailscale');
+          const url = result.wifiUrl ?? result.tailscaleUrl ?? result.url;
+          generateQr(url);
+        })
+        .catch((err: unknown) => {
+          setStarting(false);
+          setError(
+            err instanceof Error ? err.message : t('Failed to start server', '启动服务失败'),
+          );
+        });
     } else {
       // Re-derive mode if network changed since last open
-      if (mode() === "wifi" && !store.remoteAccess.wifiUrl && store.remoteAccess.tailscaleUrl) {
-        setMode("tailscale");
-      } else if (mode() === "tailscale" && !store.remoteAccess.tailscaleUrl && store.remoteAccess.wifiUrl) {
-        setMode("wifi");
+      if (mode() === 'wifi' && !store.remoteAccess.wifiUrl && store.remoteAccess.tailscaleUrl) {
+        setMode('tailscale');
+      } else if (
+        mode() === 'tailscale' &&
+        !store.remoteAccess.tailscaleUrl &&
+        store.remoteAccess.wifiUrl
+      ) {
+        setMode('wifi');
       }
       const url = activeUrl();
       if (url) generateQr(url);
@@ -120,8 +130,13 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
 
     // Poll connected clients count while modal is open
     let pollActive = true;
-    const interval = setInterval(() => { if (pollActive) refreshRemoteStatus(); }, 3000);
-    stopPolling = () => { pollActive = false; clearInterval(interval); };
+    const interval = setInterval(() => {
+      if (pollActive) refreshRemoteStatus();
+    }, 3000);
+    stopPolling = () => {
+      pollActive = false;
+      clearInterval(interval);
+    };
     onCleanup(() => stopPolling?.());
   });
 
@@ -135,19 +150,22 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch { /* clipboard not available */ }
+      if (copiedTimer !== undefined) clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard not available */
+    }
   }
 
   const pillStyle = (active: boolean) => ({
-    padding: "6px 14px",
-    "border-radius": "6px",
-    border: "none",
-    "font-size": "12px",
-    cursor: "pointer",
-    background: active ? theme.accent : "transparent",
-    color: active ? "#fff" : theme.fgMuted,
-    "font-weight": active ? "600" : "400",
+    padding: '6px 14px',
+    'border-radius': '6px',
+    border: 'none',
+    'font-size': '12px',
+    cursor: 'pointer',
+    background: active ? theme.accent : 'transparent',
+    color: active ? '#fff' : theme.fgMuted,
+    'font-weight': active ? '600' : '400',
   });
 
   return (
@@ -155,15 +173,17 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
       <Show when={props.open}>
         <div
           style={{
-            position: "fixed",
-            inset: "0",
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "center",
-            background: "rgba(0,0,0,0.55)",
-            "z-index": "1000",
+            position: 'fixed',
+            inset: '0',
+            display: 'flex',
+            'align-items': 'center',
+            'justify-content': 'center',
+            background: 'rgba(0,0,0,0.55)',
+            'z-index': '1000',
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) void closeOnly(); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) void closeOnly();
+          }}
         >
           <div
             ref={dialogRef}
@@ -171,35 +191,37 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
             style={{
               background: theme.islandBg,
               border: `1px solid ${theme.border}`,
-              "border-radius": "14px",
-              padding: "28px",
-              width: "380px",
-              display: "flex",
-              "flex-direction": "column",
-              "align-items": "center",
-              gap: "20px",
-              outline: "none",
-              "box-shadow": "0 12px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset",
+              'border-radius': '14px',
+              padding: '28px',
+              width: '380px',
+              display: 'flex',
+              'flex-direction': 'column',
+              'align-items': 'center',
+              gap: '20px',
+              outline: 'none',
+              'box-shadow': '0 12px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ "text-align": "center" }}>
-              <h2 style={{ margin: "0", "font-size": "16px", color: theme.fg, "font-weight": "600" }}>
-                {t("Connect Phone", "连接手机")}
+            <div style={{ 'text-align': 'center' }}>
+              <h2
+                style={{ margin: '0', 'font-size': '16px', color: theme.fg, 'font-weight': '600' }}
+              >
+                {t('Connect Phone', '连接手机')}
               </h2>
-              <span style={{ "font-size": "11px", color: theme.fgSubtle }}>
-                {t("Experimental", "实验功能")}
+              <span style={{ 'font-size': '11px', color: theme.fgSubtle }}>
+                {t('Experimental', '实验功能')}
               </span>
             </div>
 
             <Show when={starting()}>
-              <div style={{ color: theme.fgMuted, "font-size": "13px" }}>
-                {t("Starting server...", "正在启动服务...")}
+              <div style={{ color: theme.fgMuted, 'font-size': '13px' }}>
+                {t('Starting server...', '正在启动服务...')}
               </div>
             </Show>
 
             <Show when={error()}>
-              <div style={{ color: theme.error, "font-size": "13px", "text-align": "center" }}>
+              <div style={{ color: theme.error, 'font-size': '13px', 'text-align': 'center' }}>
                 {error()}
               </div>
             </Show>
@@ -274,53 +296,74 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                 {(url) => (
                   <img
                     src={url()}
-                    alt={t("Connection QR code", "连接二维码")}
+                    alt={t('Connection QR code', '连接二维码')}
                     style={{ width: '200px', height: '200px', 'border-radius': '8px' }}
                   />
                 )}
               </Show>
 
               {/* URL */}
-              <div style={{
-                width: "100%",
-                background: theme.bgInput,
-                border: `1px solid ${theme.border}`,
-                "border-radius": "8px",
-                padding: "10px 12px",
-                "font-size": "12px",
-                "font-family": "'JetBrains Mono', monospace",
-                color: theme.fg,
-                "word-break": "break-all",
-                "text-align": "center",
-                cursor: "pointer",
-              }}
+              <div
+                style={{
+                  width: '100%',
+                  background: theme.bgInput,
+                  border: `1px solid ${theme.border}`,
+                  'border-radius': '8px',
+                  padding: '10px 12px',
+                  'font-size': '12px',
+                  'font-family': "'JetBrains Mono', monospace",
+                  color: theme.fg,
+                  'word-break': 'break-all',
+                  'text-align': 'center',
+                  cursor: 'pointer',
+                }}
                 onClick={handleCopyUrl}
-                title={t("Click to copy", "点击复制")}
+                title={t('Click to copy', '点击复制')}
               >
                 {activeUrl() ?? store.remoteAccess.url}
               </div>
 
               <Show when={copied()}>
-                <span style={{ "font-size": "12px", color: theme.success }}>
-                  {t("Copied!", "已复制！")}
+                <span style={{ 'font-size': '12px', color: theme.success }}>
+                  {t('Copied!', '已复制！')}
                 </span>
               </Show>
 
               {/* Instructions */}
-              <p style={{ "font-size": "12px", color: theme.fgMuted, "text-align": "center", margin: "0", "line-height": "1.5" }}>
+              <p
+                style={{
+                  'font-size': '12px',
+                  color: theme.fgMuted,
+                  'text-align': 'center',
+                  margin: '0',
+                  'line-height': '1.5',
+                }}
+              >
                 {t(
-                  "Scan the QR code or copy the URL to monitor and interact with your agent terminals from your phone.",
-                  "扫描二维码或复制链接，即可在手机上查看并操作代理终端。",
+                  'Scan the QR code or copy the URL to monitor and interact with your agent terminals from your phone.',
+                  '扫描二维码或复制链接，即可在手机上查看并操作代理终端。',
                 )}
-                <Show when={mode() === "tailscale"} fallback={
-                  <>{t(" Your phone and this computer must be on the same WiFi network.", " 手机与电脑需在同一 WiFi 网络下。")}</>
-                }>
-                  <>{t(" Your phone and this computer must be on the same Tailscale network.", " 手机与电脑需在同一 Tailscale 网络下。")}</>
-                </Show>
-                {" "}
+                <Show
+                  when={mode() === 'tailscale'}
+                  fallback={
+                    <>
+                      {t(
+                        ' Your phone and this computer must be on the same WiFi network.',
+                        ' 手机与电脑需在同一 WiFi 网络下。',
+                      )}
+                    </>
+                  }
+                >
+                  <>
+                    {t(
+                      ' Your phone and this computer must be on the same Tailscale network.',
+                      ' 手机与电脑需在同一 Tailscale 网络下。',
+                    )}
+                  </>
+                </Show>{' '}
                 {t(
-                  "Access token auto-rotates every 10 minutes without dropping connected sessions. Closing this dialog will keep remote access active until you disconnect.",
-                  "访问令牌每 10 分钟自动轮换，不会中断已连接会话。关闭此窗口后，远程访问仍会保持，直到你手动断开。",
+                  'Access token auto-rotates every 10 minutes without dropping connected sessions. Closing this dialog will keep remote access active until you disconnect.',
+                  '访问令牌每 10 分钟自动轮换，不会中断已连接会话。关闭此窗口后，远程访问仍会保持，直到你手动断开。',
                 )}
               </p>
 
@@ -328,34 +371,50 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
               <Show
                 when={store.remoteAccess.connectedClients > 0}
                 fallback={
-                  <div style={{
-                    "font-size": "12px",
-                    color: theme.fgSubtle,
-                    display: "flex",
-                    "align-items": "center",
-                    gap: "6px",
-                  }}>
-                    <div style={{
-                      width: "8px",
-                      height: "8px",
-                      "border-radius": "50%",
-                      background: theme.fgSubtle,
-                    }} />
-                    {t("Waiting for connection...", "等待连接中...")}
+                  <div
+                    style={{
+                      'font-size': '12px',
+                      color: theme.fgSubtle,
+                      display: 'flex',
+                      'align-items': 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '8px',
+                        height: '8px',
+                        'border-radius': '50%',
+                        background: theme.fgSubtle,
+                      }}
+                    />
+                    {t('Waiting for connection...', '等待连接中...')}
                   </div>
                 }
               >
-                <div style={{
-                  display: "flex",
-                  "flex-direction": "column",
-                  "align-items": "center",
-                  gap: "8px",
-                }}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={theme.success} stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <div
+                  style={{
+                    display: 'flex',
+                    'flex-direction': 'column',
+                    'align-items': 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <svg
+                    width="48"
+                    height="48"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={theme.success}
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
-                  <span style={{ "font-size": "14px", color: theme.success, "font-weight": "500" }}>
-                    {store.remoteAccess.connectedClients}{t(" client(s) connected", " 个客户端已连接")}
+                  <span style={{ 'font-size': '14px', color: theme.success, 'font-weight': '500' }}>
+                    {store.remoteAccess.connectedClients}
+                    {t(' client(s) connected', ' 个客户端已连接')}
                   </span>
                 </div>
               </Show>
@@ -364,17 +423,17 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
               <button
                 onClick={handleDisconnect}
                 style={{
-                  padding: "7px 16px",
-                  background: "transparent",
-                  border: "none",
-                  "border-radius": "8px",
+                  padding: '7px 16px',
+                  background: 'transparent',
+                  border: 'none',
+                  'border-radius': '8px',
                   color: theme.fgSubtle,
-                  cursor: "pointer",
-                  "font-size": "12px",
-                  "font-weight": "400",
+                  cursor: 'pointer',
+                  'font-size': '12px',
+                  'font-weight': '400',
                 }}
               >
-                {t("Disconnect", "断开连接")}
+                {t('Disconnect', '断开连接')}
               </button>
             </Show>
           </div>

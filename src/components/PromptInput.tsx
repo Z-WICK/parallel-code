@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onMount, onCleanup, untrack, createMemo } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import { invoke } from '../lib/ipc';
+import { fireAndForget } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import {
   store,
@@ -463,7 +463,7 @@ export function PromptInput(props: PromptInputProps) {
     const val = text().trim();
     if (!val) {
       if (mode === 'auto') return;
-      await invoke(IPC.WriteToAgent, { agentId: props.agentId, data: '\r' });
+      fireAndForget(IPC.WriteToAgent, { agentId: props.agentId, data: '\r' });
       return;
     }
 

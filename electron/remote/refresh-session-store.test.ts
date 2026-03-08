@@ -3,7 +3,7 @@ import { createRefreshSessionStore } from './refresh-session-store.js';
 
 describe('createRefreshSessionStore', () => {
   it('issues token and exchanges it one-time', () => {
-    let now = 1_000;
+    const now = 1_000;
     let idx = 0;
     const store = createRefreshSessionStore({
       ttlMs: 10_000,
@@ -44,7 +44,7 @@ describe('createRefreshSessionStore', () => {
   });
 
   it('caps token count to maxTokens', () => {
-    let now = 1_000;
+    const now = 1_000;
     let idx = 0;
     const store = createRefreshSessionStore({
       ttlMs: 10_000,

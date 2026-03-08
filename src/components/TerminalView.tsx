@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { invoke, Channel } from '../lib/ipc';
+import { invoke, fireAndForget, Channel } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { getTerminalFontFamily } from '../lib/fonts';
 import { getTerminalTheme } from '../lib/theme';
@@ -90,12 +90,19 @@ export function TerminalView(props: TerminalViewProps) {
     term.loadAddon(fitAddon);
     term.loadAddon(
       new WebLinksAddon((_event, uri) => {
-        window.open(uri, '_blank');
+        try {
+          const parsed = new URL(uri);
+          if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            window.open(uri, '_blank');
+          }
+        } catch {
+          // Invalid URL, ignore
+        }
       }),
     );
 
     term.open(containerRef);
-    props.onReady?.(() => term!.focus());
+    props.onReady?.(() => term?.focus());
     props.onBufferReady?.(() => {
       if (!term) return '';
       const buf = term.buffer.active;
@@ -113,7 +120,7 @@ export function TerminalView(props: TerminalViewProps) {
       handleTerminalClipboardKeyEvent(e, {
         isMac,
         isGlobalShortcut: matchesGlobalShortcut,
-        getSelection: () => term!.getSelection(),
+        getSelection: () => term?.getSelection() ?? '',
         readClipboardText: () => navigator.clipboard.readText(),
         readClipboardItems: () => navigator.clipboard.read(),
         saveClipboardImage: (base64Data, mimeType) =>
@@ -180,6 +187,7 @@ export function TerminalView(props: TerminalViewProps) {
           : payload;
 
       outputWriteInFlight = true;
+      // eslint-disable-next-line solid/reactivity -- write callback is not a reactive context
       term.write(payload, () => {
         outputWriteInFlight = false;
         watermark = Math.max(watermark - payload.length, 0);
@@ -240,8 +248,9 @@ export function TerminalView(props: TerminalViewProps) {
       if (msg.type === 'Data') {
         enqueueOutput(base64ToUint8Array(msg.data));
         if (!initialCommandSent && props.initialCommand) {
+          const cmd = props.initialCommand;
           initialCommandSent = true;
-          setTimeout(() => enqueueInput(props.initialCommand! + '\r'), 50);
+          setTimeout(() => enqueueInput(cmd + '\r'), 50);
         }
       } else if (msg.type === 'Exit') {
         pendingExitPayload = msg.data;
@@ -266,7 +275,7 @@ export function TerminalView(props: TerminalViewProps) {
         clearTimeout(inputFlushTimer);
         inputFlushTimer = undefined;
       }
-      invoke(IPC.WriteToAgent, { agentId, data });
+      fireAndForget(IPC.WriteToAgent, { agentId, data });
     }
 
     function enqueueInput(data: string) {
@@ -282,12 +291,13 @@ export function TerminalView(props: TerminalViewProps) {
       }, 8);
     }
 
+    // eslint-disable-next-line solid/reactivity -- event handler reads current prop values intentionally
     term.onData((data) => {
       if (props.onPromptDetected) {
         for (const ch of data) {
           if (ch === '\r') {
             const trimmed = inputBuffer.trim();
-            if (trimmed) props.onPromptDetected!(trimmed);
+            if (trimmed) props.onPromptDetected?.(trimmed);
             inputBuffer = '';
           } else if (ch === '\x7f') {
             inputBuffer = inputBuffer.slice(0, -1);
@@ -316,7 +326,7 @@ export function TerminalView(props: TerminalViewProps) {
       if (cols === lastSentCols && rows === lastSentRows) return;
       lastSentCols = cols;
       lastSentRows = rows;
-      invoke(IPC.ResizeAgent, { agentId, cols, rows });
+      fireAndForget(IPC.ResizeAgent, { agentId, cols, rows });
     }
 
     term.onResize(({ cols, rows }) => {
@@ -357,12 +367,14 @@ export function TerminalView(props: TerminalViewProps) {
       env: props.env ?? {},
       cols: term.cols,
       rows: term.rows,
+      isShell: props.isShell,
       onOutput,
+      // eslint-disable-next-line solid/reactivity -- promise catch handler reads current prop values intentionally
     }).catch((err) => {
       // Strip control/escape characters to prevent terminal escape injection
       // eslint-disable-next-line no-control-regex -- intentionally stripping control/escape chars to prevent terminal injection
       const safeErr = String(err).replace(/[\x00-\x1f\x7f]/g, '');
-      term!.write(`\x1b[31mFailed to spawn: ${safeErr}\x1b[0m\r\n`);
+      term?.write(`\x1b[31mFailed to spawn: ${safeErr}\x1b[0m\r\n`);
       props.onExit?.({
         exit_code: null,
         signal: 'spawn_failed',
@@ -381,8 +393,8 @@ export function TerminalView(props: TerminalViewProps) {
       webglAddon = undefined;
       unregisterTerminal(agentId);
       // kill_agent already clears paused flag before killing
-      invoke(IPC.KillAgent, { agentId });
-      term!.dispose();
+      fireAndForget(IPC.KillAgent, { agentId });
+      term?.dispose();
     });
   });
 

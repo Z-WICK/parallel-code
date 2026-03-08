@@ -72,6 +72,9 @@ const SYMLINK_CANDIDATES = [
   'node_modules',
 ];
 
+/** Entries inside `.claude` that must NOT be symlinked (kept per-worktree). */
+const CLAUDE_DIR_EXCLUDE = new Set(['plans', 'settings.local.json']);
+
 // --- Internal helpers ---
 
 async function detectMainBranch(repoRoot: string): Promise<string> {
@@ -271,6 +274,33 @@ async function computeBranchDiffStats(
   return { linesAdded, linesRemoved };
 }
 
+/**
+ * "Shallow-symlink" a directory: create a real directory at `target` and
+ * symlink each entry from `source` into it, EXCEPT entries in `exclude`.
+ */
+function shallowSymlinkDir(source: string, target: string, exclude: Set<string>): void {
+  fs.mkdirSync(target, { recursive: true });
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(source, { withFileTypes: true });
+  } catch (err) {
+    console.warn(`Failed to read directory ${source} for shallow-symlink:`, err);
+    return;
+  }
+  for (const entry of entries) {
+    if (exclude.has(entry.name)) continue;
+    const src = path.join(source, entry.name);
+    const dst = path.join(target, entry.name);
+    try {
+      if (!fs.existsSync(dst)) {
+        fs.symlinkSync(src, dst);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 // --- Public functions (used by tasks.ts and register.ts) ---
 
 export async function createWorktree(
@@ -317,7 +347,13 @@ export async function createWorktree(
     const source = path.join(repoRoot, name);
     const target = path.join(worktreePath, name);
     try {
-      if (fs.existsSync(source) && !fs.existsSync(target)) {
+      if (!fs.existsSync(source)) continue;
+      if (fs.existsSync(target)) continue;
+
+      if (name === '.claude') {
+        // Shallow-symlink: real dir with per-entry symlinks, excluding per-worktree entries
+        shallowSymlinkDir(source, target, CLAUDE_DIR_EXCLUDE);
+      } else {
         fs.symlinkSync(source, target);
       }
     } catch {
@@ -468,23 +504,64 @@ export async function getChangedFiles(worktreePath: string): Promise<
   }
 
   // Uncommitted-only files (in status but not in committed diff)
-  for (const [p, statusLetter] of uncommittedPaths) {
-    if (seen.has(p)) continue;
-    const fullPath = path.join(worktreePath, p);
-    let added = 0;
+  // Use git diff --numstat HEAD for tracked files to get actual changed line counts
+  const uncommittedNumstat = new Map<string, [number, number]>();
+  const hasTrackedUncommitted = [...uncommittedPaths.keys()].some(
+    (p) => !seen.has(p) && !untrackedPaths.has(p),
+  );
+  if (hasTrackedUncommitted) {
     try {
-      const stat = await fs.promises.stat(fullPath);
-      if (stat.isFile() && stat.size < MAX_BUFFER) {
-        const content = await fs.promises.readFile(fullPath, 'utf8');
-        added = content.split('\n').length;
+      const { stdout } = await exec('git', ['diff', '--numstat', 'HEAD'], {
+        cwd: worktreePath,
+        maxBuffer: MAX_BUFFER,
+      });
+      for (const line of stdout.split('\n')) {
+        const parts = line.split('\t');
+        if (parts.length >= 3) {
+          const a = parseInt(parts[0], 10);
+          const r = parseInt(parts[1], 10);
+          if (!isNaN(a) && !isNaN(r)) {
+            const rawPath = parts[parts.length - 1];
+            const np = normalizeStatusPath(rawPath);
+            if (np) uncommittedNumstat.set(np, [a, r]);
+          }
+        }
       }
     } catch {
       /* ignore */
     }
+  }
+
+  for (const [p, statusLetter] of uncommittedPaths) {
+    if (seen.has(p)) continue;
+    let added = 0;
+    let removed = 0;
+
+    if (untrackedPaths.has(p)) {
+      // Untracked (new) files: count all lines as added
+      const fullPath = path.join(worktreePath, p);
+      try {
+        const stat = await fs.promises.stat(fullPath);
+        if (stat.isFile() && stat.size < MAX_BUFFER) {
+          const content = await fs.promises.readFile(fullPath, 'utf8');
+          const lines = content.split('\n');
+          added = content.endsWith('\n') ? lines.length - 1 : lines.length;
+        }
+      } catch {
+        /* ignore */
+      }
+    } else {
+      // Tracked files: use actual diff stats
+      const stats = uncommittedNumstat.get(p);
+      if (stats) {
+        [added, removed] = stats;
+      }
+    }
+
     files.push({
       path: p,
       lines_added: added,
-      lines_removed: 0,
+      lines_removed: removed,
       status: statusLetter,
       committed: false,
     });
@@ -554,11 +631,19 @@ export async function getFileDiff(worktreePath: string, filePath: string): Promi
     /* file doesn't exist — deleted file */
   }
 
-  // Select newContent: if disk differs from committed, there are uncommitted changes — show disk.
-  // Otherwise use committed content for consistency. For untracked files, only disk exists.
+  // Detect uncommitted deletion: file tracked in HEAD but deleted locally
+  const isUncommittedDeletion = !fileExistsOnDisk && committedContent !== '';
+
+  // Select newContent based on file state
   const hasUncommittedChanges =
     committedContent && fileExistsOnDisk && fileContentReadable && diskContent !== committedContent;
-  if (hasUncommittedChanges) {
+  if (isUncommittedDeletion) {
+    newContent = '';
+    // File added in branch but deleted locally — show committed content as "old" side
+    if (!oldContent && committedContent) {
+      oldContent = committedContent;
+    }
+  } else if (hasUncommittedChanges) {
     newContent = diskContent;
   } else if (committedContent) {
     newContent = committedContent;
@@ -589,6 +674,15 @@ export async function getFileDiff(worktreePath: string, filePath: string): Promi
     diff = pseudo;
   }
 
+  // Uncommitted deletion with no committed diff — build deletion pseudo-diff
+  if (!diff && isUncommittedDeletion && oldContent) {
+    const lines = oldContent.split('\n');
+    let pseudo = `--- a/${filePath}\n+++ /dev/null\n@@ -1,${lines.length} +0,0 @@\n`;
+    for (const line of lines) {
+      pseudo += `-${line}\n`;
+    }
+    diff = pseudo;
+  }
   return { diff, oldContent, newContent };
 }
 
@@ -750,10 +844,14 @@ export async function mergeTask(
 export async function getBranchLog(worktreePath: string): Promise<string> {
   const mainBranch = await detectMainBranch(worktreePath).catch(() => 'HEAD');
   try {
-    const { stdout } = await exec('git', ['log', `${mainBranch}..HEAD`, '--pretty=format:- %s'], {
-      cwd: worktreePath,
-      maxBuffer: MAX_BUFFER,
-    });
+    const { stdout } = await exec(
+      'git',
+      ['log', `${mainBranch}..HEAD`, '--pretty=format:- %h %s'],
+      {
+        cwd: worktreePath,
+        maxBuffer: MAX_BUFFER,
+      },
+    );
     return stdout;
   } catch {
     return '';

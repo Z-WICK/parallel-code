@@ -20,6 +20,17 @@ import { isLookPreset } from '../lib/look';
 import { isAppLocale, getPreferredLocale } from '../lib/i18n';
 import { syncTerminalCounter } from './terminals';
 
+function stripControlChars(input: string): string {
+  let sanitized = '';
+  for (const char of input) {
+    const code = char.charCodeAt(0);
+    if (code >= 0x20 && code !== 0x7f) {
+      sanitized += char;
+    }
+  }
+  return sanitized;
+}
+
 export async function saveState(): Promise<void> {
   const persisted: PersistedState = {
     projects: store.projects.map((p) => ({ ...p })),
@@ -172,8 +183,8 @@ function parseCustomSlashCommands(v: unknown): SlashCommand[] {
         id: item.id,
         name: item.name,
         source: 'custom',
-        description: item.description.replace(/[\x00-\x1F\x7F]/g, '').trim(),
-        template: item.template?.replace(/[\x00-\x1F\x7F]/g, '').trim() || undefined,
+        description: stripControlChars(item.description).trim(),
+        template: item.template ? stripControlChars(item.template).trim() || undefined : undefined,
       }),
     );
 }

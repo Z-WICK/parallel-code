@@ -46,9 +46,22 @@ function normalizeCommandName(name: string): string {
 const MAX_COMMAND_DESCRIPTION_LENGTH = 200;
 const MAX_COMMAND_TEMPLATE_LENGTH = 500;
 
+function stripControlChars(input: string): string {
+  let sanitized = '';
+  for (const char of input) {
+    const code = char.charCodeAt(0);
+    if (code >= 0x20 && code !== 0x7f) {
+      sanitized += char;
+    }
+  }
+  return sanitized;
+}
+
 function sanitizeTextInput(input: string, maxLength: number): string {
   return input
-    .replace(/[\x00-\x1F\x7F]/g, '')
+    .split('\n')
+    .map((line) => stripControlChars(line))
+    .join(' ')
     .trim()
     .slice(0, maxLength);
 }

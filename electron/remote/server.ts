@@ -1,10 +1,10 @@
 // electron/remote/server.ts
 
-import { createServer, type IncomingMessage, type ServerResponse } from "http";
-import { existsSync, createReadStream } from "fs";
-import { join, resolve, relative, extname, isAbsolute } from "path";
-import { WebSocketServer, WebSocket } from "ws";
-import { networkInterfaces } from "os";
+import { createServer, type IncomingMessage, type ServerResponse } from 'http';
+import { existsSync, createReadStream } from 'fs';
+import { join, resolve, relative, extname, isAbsolute } from 'path';
+import { WebSocketServer, WebSocket } from 'ws';
+import { networkInterfaces } from 'os';
 import {
   writeToAgent,
   resizeAgent,
@@ -16,23 +16,19 @@ import {
   getAgentMeta,
   getAgentCols,
   onPtyEvent,
-} from "../ipc/pty.js";
-import {
-  parseClientMessage,
-  type ServerMessage,
-  type RemoteAgent,
-} from "./protocol.js";
-import { createRotatingTokenStore } from "./rotating-token-store.js";
-import { createRefreshSessionStore } from "./refresh-session-store.js";
+} from '../ipc/pty.js';
+import { parseClientMessage, type ServerMessage, type RemoteAgent } from './protocol.js';
+import { createRotatingTokenStore } from './rotating-token-store.js';
+import { createRefreshSessionStore } from './refresh-session-store.js';
 
 const MIME: Record<string, string> = {
-  ".html": "text/html",
-  ".js": "application/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".ico": "image/x-icon",
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
 };
 
 const TOKEN_TTL_MS = 10 * 60 * 1000;
@@ -61,10 +57,10 @@ function getNetworkIps(): { wifi: string | null; tailscale: string | null } {
 
   for (const addrs of Object.values(nets)) {
     for (const addr of addrs ?? []) {
-      if (addr.family !== "IPv4" || addr.internal) continue;
-      if (addr.address.startsWith("100.")) {
+      if (addr.family !== 'IPv4' || addr.internal) continue;
+      if (addr.address.startsWith('100.')) {
         tailscale ??= addr.address;
-      } else if (!addr.address.startsWith("172.")) {
+      } else if (!addr.address.startsWith('172.')) {
         wifi ??= addr.address;
       }
     }
@@ -73,15 +69,21 @@ function getNetworkIps(): { wifi: string | null; tailscale: string | null } {
   return { wifi, tailscale };
 }
 
-/** Build the agent list, deduplicated by taskId (keeps latest agent per task). */
+/** Build the agent list, deduplicated by taskId (keeps main agent per task). */
 function buildAgentList(
   getTaskName: (taskId: string) => string,
-  getAgentStatus: (agentId: string) => { status: "running" | "exited"; exitCode: number | null; lastLine: string },
+  getAgentStatus: (agentId: string) => {
+    status: 'running' | 'exited';
+    exitCode: number | null;
+    lastLine: string;
+  },
 ): RemoteAgent[] {
   const byTask = new Map<string, RemoteAgent>();
   for (const agentId of getActiveAgentIds()) {
     const meta = getAgentMeta(agentId);
     if (!meta) continue;
+    // Skip shell/sub-terminals — mobile should only show the main agent
+    if (meta.isShell) continue;
     const info = getAgentStatus(agentId);
     const agent: RemoteAgent = {
       agentId,
@@ -93,7 +95,7 @@ function buildAgentList(
     };
     // Prefer running agents over exited ones for the same task
     const existing = byTask.get(meta.taskId);
-    if (!existing || (agent.status === "running" && existing.status !== "running")) {
+    if (!existing || (agent.status === 'running' && existing.status !== 'running')) {
       byTask.set(meta.taskId, agent);
     }
   }
@@ -105,7 +107,11 @@ export function startRemoteServer(opts: {
   allowExternal: boolean;
   staticDir: string;
   getTaskName: (taskId: string) => string;
-  getAgentStatus: (agentId: string) => { status: "running" | "exited"; exitCode: number | null; lastLine: string };
+  getAgentStatus: (agentId: string) => {
+    status: 'running' | 'exited';
+    exitCode: number | null;
+    lastLine: string;
+  };
 }): RemoteServer {
   const tokenStore = createRotatingTokenStore({
     tokenTtlMs: TOKEN_TTL_MS,
@@ -119,20 +125,20 @@ export function startRemoteServer(opts: {
 
   function checkAuthHeader(req: IncomingMessage): boolean {
     const auth = req.headers.authorization;
-    return auth?.startsWith("Bearer ") ? tokenStore.accepts(auth.slice(7)) : false;
+    return auth?.startsWith('Bearer ') ? tokenStore.accepts(auth.slice(7)) : false;
   }
 
   function getWsProtocolToken(req: IncomingMessage): string | null {
-    const raw = req.headers["sec-websocket-protocol"];
+    const raw = req.headers['sec-websocket-protocol'];
     if (!raw) return null;
-    const value = Array.isArray(raw) ? raw.join(",") : raw;
+    const value = Array.isArray(raw) ? raw.join(',') : raw;
     const protocols = value
-      .split(",")
+      .split(',')
       .map((p) => p.trim())
       .filter(Boolean);
     for (const protocol of protocols) {
-      if (protocol.startsWith("pc-token.")) {
-        return protocol.slice("pc-token.".length);
+      if (protocol.startsWith('pc-token.')) {
+        return protocol.slice('pc-token.'.length);
       }
     }
     return null;
@@ -140,21 +146,21 @@ export function startRemoteServer(opts: {
 
   function getWsHandshakeToken(req: IncomingMessage): string | null {
     const auth = req.headers.authorization;
-    if (auth?.startsWith("Bearer ")) return auth.slice(7);
+    if (auth?.startsWith('Bearer ')) return auth.slice(7);
     const protocolToken = getWsProtocolToken(req);
     if (protocolToken) return protocolToken;
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    return url.searchParams.get("token");
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    return url.searchParams.get('token');
   }
 
   const SECURITY_HEADERS: Record<string, string> = {
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
   };
 
   function writeJson(res: ServerResponse, status: number, payload: unknown): void {
-    res.writeHead(status, { ...SECURITY_HEADERS, "Content-Type": "application/json" });
+    res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify(payload));
   }
 
@@ -180,7 +186,7 @@ export function startRemoteServer(opts: {
   function sendTokenMessage(ws: WebSocket, includeRefreshToken = false): void {
     ws.send(
       JSON.stringify({
-        type: "token",
+        type: 'token',
         ...issueTokenPayload(includeRefreshToken),
       } satisfies ServerMessage),
     );
@@ -192,41 +198,46 @@ export function startRemoteServer(opts: {
     const ips = getNetworkIps();
     // Use query token in the shared URL to avoid camera-app fragment loss on iOS.
     const localUrl = `http://127.0.0.1:${opts.port}/?token=${tokenStore.token}`;
-    const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? "127.0.0.1") : "127.0.0.1";
+    const primaryIp = opts.allowExternal ? (ips.wifi ?? ips.tailscale ?? '127.0.0.1') : '127.0.0.1';
     const url = `http://${primaryIp}:${opts.port}/?token=${tokenStore.token}`;
-    const wifiUrl = opts.allowExternal && ips.wifi ? `http://${ips.wifi}:${opts.port}/?token=${tokenStore.token}` : null;
-    const tailscaleUrl = opts.allowExternal && ips.tailscale ? `http://${ips.tailscale}:${opts.port}/?token=${tokenStore.token}` : null;
+    const wifiUrl =
+      opts.allowExternal && ips.wifi
+        ? `http://${ips.wifi}:${opts.port}/?token=${tokenStore.token}`
+        : null;
+    const tailscaleUrl =
+      opts.allowExternal && ips.tailscale
+        ? `http://${ips.tailscale}:${opts.port}/?token=${tokenStore.token}`
+        : null;
     return { url: opts.allowExternal ? url : localUrl, wifiUrl, tailscaleUrl };
   }
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
     // --- API routes (require auth) ---
-    if (url.pathname.startsWith("/api/")) {
-      if (url.pathname === "/api/auth/refresh" && req.method === "POST") {
-        let raw = "";
-        req.on("data", (chunk: Buffer) => {
-          raw += chunk.toString("utf8");
+    if (url.pathname.startsWith('/api/')) {
+      if (url.pathname === '/api/auth/refresh' && req.method === 'POST') {
+        let raw = '';
+        req.on('data', (chunk: Buffer) => {
+          raw += chunk.toString('utf8');
           if (raw.length > 8 * 1024) req.destroy();
         });
-        req.on("error", () => {
-          writeJson(res, 400, { error: "bad request" });
+        req.on('error', () => {
+          writeJson(res, 400, { error: 'bad request' });
         });
-        req.on("end", () => {
+        req.on('end', () => {
           let refreshToken: string | null = null;
           try {
             const parsed = JSON.parse(raw) as { refreshToken?: unknown };
-            refreshToken =
-              typeof parsed.refreshToken === "string" ? parsed.refreshToken : null;
+            refreshToken = typeof parsed.refreshToken === 'string' ? parsed.refreshToken : null;
           } catch {
-            writeJson(res, 400, { error: "invalid json" });
+            writeJson(res, 400, { error: 'invalid json' });
             return;
           }
 
           const nextRefreshToken = refreshStore.exchange(refreshToken);
           if (!nextRefreshToken) {
-            writeJson(res, 401, { error: "unauthorized" });
+            writeJson(res, 401, { error: 'unauthorized' });
             return;
           }
 
@@ -247,22 +258,22 @@ export function startRemoteServer(opts: {
       }
 
       if (!checkAuthHeader(req)) {
-        writeJson(res, 401, { error: "unauthorized" });
+        writeJson(res, 401, { error: 'unauthorized' });
         return;
       }
 
-      if (url.pathname === "/api/agents" && req.method === "GET") {
+      if (url.pathname === '/api/agents' && req.method === 'GET') {
         const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
         writeJson(res, 200, list);
         return;
       }
 
       const agentMatch = url.pathname.match(/^\/api\/agents\/([^/]+)$/);
-      if (agentMatch && req.method === "GET") {
+      if (agentMatch && req.method === 'GET') {
         const agentId = agentMatch[1];
         const scrollback = getAgentScrollback(agentId);
         if (scrollback === null) {
-          writeJson(res, 404, { error: "agent not found" });
+          writeJson(res, 404, { error: 'agent not found' });
           return;
         }
         const meta = getAgentMeta(agentId);
@@ -270,47 +281,52 @@ export function startRemoteServer(opts: {
         writeJson(res, 200, {
           agentId,
           scrollback,
-          status: info?.status ?? "exited",
+          status: info?.status ?? 'exited',
           exitCode: info?.exitCode ?? null,
         });
         return;
       }
 
-      writeJson(res, 404, { error: "not found" });
+      writeJson(res, 404, { error: 'not found' });
       return;
     }
 
     // --- Static file serving for mobile SPA (async) ---
-    const filePath = url.pathname === "/" ? "/index.html" : url.pathname;
-    const fullPath = resolve(opts.staticDir, filePath.replace(/^\/+/, ""));
+    const filePath = url.pathname === '/' ? '/index.html' : url.pathname;
+    const fullPath = resolve(opts.staticDir, filePath.replace(/^\/+/, ''));
     const rel = relative(opts.staticDir, fullPath);
-    if (rel.startsWith("..") || isAbsolute(rel)) {
+    if (rel.startsWith('..') || isAbsolute(rel)) {
       res.writeHead(400, SECURITY_HEADERS);
-      res.end("Bad request");
+      res.end('Bad request');
       return;
     }
 
     const serveFile = (path: string, ct: string, cc: string) => {
       const stream = createReadStream(path);
-      res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": ct, "Cache-Control": cc });
+      res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': ct, 'Cache-Control': cc });
       stream.pipe(res);
-      stream.on("error", () => { if (!res.headersSent) { res.writeHead(500); } res.end(); });
+      stream.on('error', () => {
+        if (!res.headersSent) {
+          res.writeHead(500);
+        }
+        res.end();
+      });
     };
 
     if (!existsSync(fullPath)) {
-      const indexPath = join(opts.staticDir, "index.html");
+      const indexPath = join(opts.staticDir, 'index.html');
       if (existsSync(indexPath)) {
-        serveFile(indexPath, "text/html", "no-cache");
+        serveFile(indexPath, 'text/html', 'no-cache');
         return;
       }
       res.writeHead(404, SECURITY_HEADERS);
-      res.end("Not found");
+      res.end('Not found');
       return;
     }
 
     const ext = extname(fullPath);
-    const contentType = MIME[ext] ?? "application/octet-stream";
-    const cacheControl = ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable";
+    const contentType = MIME[ext] ?? 'application/octet-stream';
+    const cacheControl = ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable';
     serveFile(fullPath, contentType, cacheControl);
   });
 
@@ -319,29 +335,27 @@ export function startRemoteServer(opts: {
     server,
     maxPayload: 64 * 1024,
     verifyClient: (info, cb) => {
-      const reqUrl = new URL(info.req.url ?? "/", `http://${info.req.headers.host ?? "localhost"}`);
-      if (reqUrl.pathname !== "/ws") {
-        cb(false, 404, "Not found");
+      const reqUrl = new URL(info.req.url ?? '/', `http://${info.req.headers.host ?? 'localhost'}`);
+      if (reqUrl.pathname !== '/ws') {
+        cb(false, 404, 'Not found');
         return;
       }
       if (wss.clients.size >= 10) {
-        cb(false, 429, "Too many connections");
+        cb(false, 429, 'Too many connections');
         return;
       }
-      if (!tokenStore.accepts(getWsHandshakeToken(info.req))) {
-        cb(false, 401, "Unauthorized");
-        return;
-      }
+      // Allow the socket to connect first; auth happens via handshake token
+      // or the first auth message so stale tokens can be upgraded cleanly.
       cb(true);
     },
   });
 
-  const authedClients = new Set<WebSocket>();
+  const authenticatedClients = new Set<WebSocket>();
 
   function rotateToken(): void {
     tokenStore.rotate();
 
-    for (const client of authedClients) {
+    for (const client of authenticatedClients) {
       if (client.readyState === WebSocket.OPEN) {
         sendTokenMessage(client, false);
       }
@@ -362,67 +376,67 @@ export function startRemoteServer(opts: {
   function broadcast(msg: ServerMessage): void {
     const json = JSON.stringify(msg);
     for (const client of wss.clients) {
-      if (client.readyState === WebSocket.OPEN) {
+      if (client.readyState === WebSocket.OPEN && authenticatedClients.has(client)) {
         client.send(json);
       }
     }
   }
 
-  const unsubSpawn = onPtyEvent("spawn", () => {
+  const unsubSpawn = onPtyEvent('spawn', () => {
     const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
-    broadcast({ type: "agents", list });
+    broadcast({ type: 'agents', list });
   });
 
-  const unsubListChanged = onPtyEvent("list-changed", () => {
+  const unsubListChanged = onPtyEvent('list-changed', () => {
     const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
-    broadcast({ type: "agents", list });
+    broadcast({ type: 'agents', list });
   });
 
-  const unsubExit = onPtyEvent("exit", (agentId, data) => {
+  const unsubExit = onPtyEvent('exit', (agentId, data) => {
     const { exitCode } = (data ?? {}) as { exitCode?: number };
-    broadcast({ type: "status", agentId, status: "exited", exitCode: exitCode ?? null });
+    broadcast({ type: 'status', agentId, status: 'exited', exitCode: exitCode ?? null });
     // Clean stale subscription entries from all connected clients
     for (const client of wss.clients) {
       clientSubs.get(client)?.delete(agentId);
     }
     setTimeout(() => {
       const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
-      broadcast({ type: "agents", list });
+      broadcast({ type: 'agents', list });
     }, 100);
   });
 
-  wss.on("connection", (ws, req) => {
-    let authed = tokenStore.accepts(getWsHandshakeToken(req));
+  wss.on('connection', (ws, req) => {
+    let authenticated = tokenStore.accepts(getWsHandshakeToken(req));
+    clientSubs.set(ws, new Map());
+
     const authTimeout = setTimeout(() => {
-      if (!authed && ws.readyState === WebSocket.OPEN) {
-        ws.close(4001, "Auth timeout");
+      if (!authenticated && ws.readyState === WebSocket.OPEN) {
+        ws.close(4001, 'Auth timeout');
       }
     }, 10_000);
 
     function sendAgentList(): void {
       const list = buildAgentList(opts.getTaskName, opts.getAgentStatus);
-      ws.send(JSON.stringify({ type: "agents", list } satisfies ServerMessage));
+      ws.send(JSON.stringify({ type: 'agents', list } satisfies ServerMessage));
     }
 
-    if (authed) {
-      authedClients.add(ws);
+    if (authenticated) {
+      authenticatedClients.add(ws);
       clearTimeout(authTimeout);
       sendAgentList();
       sendTokenMessage(ws, true);
     }
 
-    clientSubs.set(ws, new Map());
-
-    ws.on("message", (raw) => {
+    ws.on('message', (raw) => {
       const msg = parseClientMessage(String(raw));
       if (!msg) return;
-      if (!authed) {
-        if (msg.type !== "auth" || !tokenStore.accepts(msg.token)) {
-          ws.close(4001, "Unauthorized");
+      if (!authenticated) {
+        if (msg.type !== 'auth' || !tokenStore.accepts(msg.token)) {
+          ws.close(4001, 'Unauthorized');
           return;
         }
-        authed = true;
-        authedClients.add(ws);
+        authenticated = true;
+        authenticatedClients.add(ws);
         clearTimeout(authTimeout);
         sendAgentList();
         sendTokenMessage(ws, true);
@@ -430,33 +444,58 @@ export function startRemoteServer(opts: {
       }
 
       switch (msg.type) {
-        case "auth":
+        case 'auth':
           // Ignore duplicate auth frames after a client is authenticated.
           break;
-        case "input":
-          try { writeToAgent(msg.agentId, msg.data); } catch { /* agent gone */ }
+        case 'input':
+          try {
+            writeToAgent(msg.agentId, msg.data);
+          } catch {
+            /* agent gone */
+          }
           break;
 
-        case "resize":
-          try { resizeAgent(msg.agentId, msg.cols, msg.rows); } catch { /* agent gone */ }
+        case 'resize':
+          try {
+            resizeAgent(msg.agentId, msg.cols, msg.rows);
+          } catch {
+            /* agent gone */
+          }
           break;
 
-        case "kill":
-          try { killAgent(msg.agentId); } catch { /* agent gone */ }
+        case 'kill':
+          try {
+            killAgent(msg.agentId);
+          } catch {
+            /* agent gone */
+          }
           break;
 
-        case "subscribe": {
+        case 'subscribe': {
           const subs = clientSubs.get(ws);
           if (subs?.has(msg.agentId)) break;
 
           const scrollback = getAgentScrollback(msg.agentId);
           if (scrollback) {
-            ws.send(JSON.stringify({ type: "scrollback", agentId: msg.agentId, data: scrollback, cols: getAgentCols(msg.agentId) } satisfies ServerMessage));
+            ws.send(
+              JSON.stringify({
+                type: 'scrollback',
+                agentId: msg.agentId,
+                data: scrollback,
+                cols: getAgentCols(msg.agentId),
+              } satisfies ServerMessage),
+            );
           }
 
           const cb = (encoded: string) => {
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "output", agentId: msg.agentId, data: encoded } satisfies ServerMessage));
+              ws.send(
+                JSON.stringify({
+                  type: 'output',
+                  agentId: msg.agentId,
+                  data: encoded,
+                } satisfies ServerMessage),
+              );
             }
           };
           if (subscribeToAgent(msg.agentId, cb)) {
@@ -465,7 +504,7 @@ export function startRemoteServer(opts: {
           break;
         }
 
-        case "unsubscribe": {
+        case 'unsubscribe': {
           const subs = clientSubs.get(ws);
           const cb = subs?.get(msg.agentId);
           if (cb) {
@@ -477,8 +516,8 @@ export function startRemoteServer(opts: {
       }
     });
 
-    ws.on("close", () => {
-      authedClients.delete(ws);
+    ws.on('close', () => {
+      authenticatedClients.delete(ws);
       clearTimeout(authTimeout);
       const subs = clientSubs.get(ws);
       if (subs) {
@@ -489,29 +528,46 @@ export function startRemoteServer(opts: {
     });
   });
 
-  server.on("error", (err) => {
-    console.error("[remote] Server error:", err.message);
+  server.on('error', (err) => {
+    console.error('[remote] Server error:', err.message);
   });
-  const bindHost = opts.allowExternal ? "0.0.0.0" : "127.0.0.1";
-  server.listen(opts.port, bindHost);
+  const bindHost = opts.allowExternal ? '0.0.0.0' : '127.0.0.1';
+  server.listen(opts.port, bindHost, () => {
+    /* bind confirmed */
+  });
 
   return {
-    get token() { return tokenStore.token; },
-    get tokenExpiresAt() { return tokenStore.tokenExpiresAt; },
+    get token() {
+      return tokenStore.token;
+    },
+    get tokenExpiresAt() {
+      return tokenStore.tokenExpiresAt;
+    },
     port: opts.port,
-    get url() { return currentUrls().url; },
-    get wifiUrl() { return currentUrls().wifiUrl; },
-    get tailscaleUrl() { return currentUrls().tailscaleUrl; },
-    connectedClients: () => wss.clients.size,
-    stop: () => new Promise<void>((resolve) => {
-      unsubSpawn();
-      unsubExit();
-      unsubListChanged();
-      clearInterval(tokenExpiryTimer);
-      for (const client of wss.clients) client.close();
-      authedClients.clear();
-      wss.close();
-      server.close(() => resolve());
-    }),
+    get url() {
+      return currentUrls().url;
+    },
+    get wifiUrl() {
+      return currentUrls().wifiUrl;
+    },
+    get tailscaleUrl() {
+      return currentUrls().tailscaleUrl;
+    },
+    connectedClients: () => authenticatedClients.size,
+    stop: () =>
+      new Promise<void>((resolve) => {
+        unsubSpawn();
+        unsubExit();
+        unsubListChanged();
+        clearInterval(tokenExpiryTimer);
+        for (const client of wss.clients) client.close();
+        authenticatedClients.clear();
+        wss.close();
+        const timeout = setTimeout(() => resolve(), 5_000);
+        server.close(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      }),
   };
 }
